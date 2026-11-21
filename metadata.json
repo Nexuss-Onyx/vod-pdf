@@ -1,0 +1,6 @@
+{
+  "name": "Vod Word",
+  "description": "Autonomous Microsoft Word executive agent, real-time office task workspace, and integrated DOCX reader and viewer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
