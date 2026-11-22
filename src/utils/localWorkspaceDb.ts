@@ -1,14 +1,15 @@
 import type {
   ChatMessage,
   ChatSession,
-  DocxAttachment,
-  DocxInspection,
+  PdfAttachment,
+  PdfInspection,
   WorkspaceSnapshot,
 } from '../types/vod';
 import { enqueueSyncOp, type PendingSyncOp } from './syncMerge';
 
-const DB_NAME = 'vod_word_local_v1';
-const DB_VERSION = 1;
+// v2 is the PDF-only cache: any DOCX-era records are cleared on upgrade.
+const DB_NAME = 'vod_pdf_local_v1';
+const DB_VERSION = 2;
 
 const STORE_META = 'meta';
 const STORE_SESSIONS = 'sessions';
@@ -25,7 +26,7 @@ export interface LocalWorkspaceMeta extends WorkspaceSnapshot {
 export interface LocalFileBlobRecord {
   fileId: string;
   buffer: ArrayBuffer;
-  inspection?: DocxInspection;
+  inspection?: PdfInspection;
   updatedAt: string;
 }
 
@@ -46,6 +47,12 @@ function openDb(): Promise<IDBDatabase | null> {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
+        // Drop every legacy store so stale non-PDF blobs/inspections can never be read back.
+        for (const name of Array.from(db.objectStoreNames)) {
+          if (![STORE_META, STORE_SESSIONS, STORE_BLOBS].includes(name)) {
+            db.deleteObjectStore(name);
+          }
+        }
         if (!db.objectStoreNames.contains(STORE_META)) {
           db.createObjectStore(STORE_META);
         }
@@ -124,7 +131,7 @@ export async function loadLocalMeta(): Promise<LocalWorkspaceMeta | null> {
 
 export async function saveLocalMeta(meta: {
   sessions: ChatSession[];
-  files: DocxAttachment[];
+  files: PdfAttachment[];
   activeSessionId?: string;
 }): Promise<void> {
   const record: LocalWorkspaceMeta = {
@@ -182,7 +189,7 @@ export async function loadLocalFileBlob(fileId: string): Promise<LocalFileBlobRe
 export async function saveLocalFileBlob(
   fileId: string,
   buffer: ArrayBuffer,
-  inspection?: DocxInspection,
+  inspection?: PdfInspection,
 ): Promise<void> {
   if (!fileId) return;
   const existing = await loadLocalFileBlob(fileId);
@@ -207,7 +214,7 @@ export async function prefetchFileToLocalCache(fileId: string): Promise<void> {
     ]);
     if (!binRes.ok) return;
     const buffer = await binRes.arrayBuffer();
-    const inspection = inspectRes.ok ? ((await inspectRes.json()) as DocxInspection) : undefined;
+    const inspection = inspectRes.ok ? ((await inspectRes.json()) as PdfInspection) : undefined;
     await saveLocalFileBlob(fileId, buffer, inspection);
   } catch {
     // Background prefetch failures are non-fatal

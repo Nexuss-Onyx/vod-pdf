@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { ChatMessage, ChatSession, DocxAttachment, WorkspaceSnapshot } from '../types/vod';
+import type { ChatMessage, ChatSession, PdfAttachment, WorkspaceSnapshot } from '../types/vod';
 import {
   enqueueSyncOp,
   mergeSessionMessages,
@@ -19,19 +19,20 @@ function makeSession(id: string, updatedAt: string, messageCount = 0): ChatSessi
   };
 }
 
-function makeFile(id: string, sessionId: string, updatedAt: string): DocxAttachment {
+function makeFile(id: string, sessionId: string, updatedAt: string): PdfAttachment {
   return {
     id,
     sessionId,
-    filename: `${id}.docx`,
+    filename: `${id}.pdf`,
     title: id,
     sizeBytes: 512,
     createdAt: updatedAt,
     updatedAt,
     version: 1,
     summary: '',
-    pageCountEstimate: 1,
-    wordCount: 25,
+    mimeType: 'application/pdf',
+    pageCount: 1,
+    textWordCount: 25,
     source: 'generated',
   };
 }

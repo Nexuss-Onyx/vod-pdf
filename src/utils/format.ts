@@ -1,4 +1,4 @@
-import type { DocxAttachment } from '../types/vod';
+import type { PdfAttachment } from '../types/vod';
 
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -7,6 +7,17 @@ export function formatBytes(bytes: number): string {
   if (kb < 1024) return `${kb.toFixed(2)} KB`;
   const mb = kb / 1024;
   return `${mb.toFixed(2)} MB`;
+}
+
+export function formatPageCount(pages: number): string {
+  if (!Number.isFinite(pages) || pages <= 0) return '0 pages';
+  return `${pages} page${pages === 1 ? '' : 's'}`;
+}
+
+export function formatWordCount(words: number): string {
+  if (!Number.isFinite(words) || words <= 0) return 'no text layer';
+  if (words < 1000) return `${words} words`;
+  return `${(words / 1000).toFixed(words < 10000 ? 1 : 0)}k words`;
 }
 
 export function formatShortTime(iso: string): string {
@@ -32,20 +43,20 @@ export function formatClockTime(iso: string): string {
 
 export interface FileTimeGroup {
   label: 'Today' | 'Yesterday' | 'Earlier';
-  files: DocxAttachment[];
+  files: PdfAttachment[];
 }
 
 export function categorizeFilesByTime(
-  files: DocxAttachment[],
+  files: PdfAttachment[],
   nowMs = Date.now(),
 ): FileTimeGroup[] {
   const now = new Date(nowMs);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
 
-  const today: DocxAttachment[] = [];
-  const yesterday: DocxAttachment[] = [];
-  const earlier: DocxAttachment[] = [];
+  const today: PdfAttachment[] = [];
+  const yesterday: PdfAttachment[] = [];
+  const earlier: PdfAttachment[] = [];
 
   const sorted = [...files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   for (const file of sorted) {

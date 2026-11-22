@@ -1,7 +1,7 @@
 import type {
   ChatMessage,
   ChatSession,
-  DocxAttachment,
+  PdfAttachment,
   WorkspaceSnapshot,
 } from '../types/vod';
 
@@ -63,7 +63,7 @@ export function mergeWorkspaceSnapshots(
     }
   }
 
-  const fileMap = new Map<string, DocxAttachment>();
+  const fileMap = new Map<string, PdfAttachment>();
   for (const f of serverSnap.files) {
     if (!pendingDeleteIds.has(f.sessionId)) {
       fileMap.set(f.id, f);

@@ -34,9 +34,9 @@ export function ThinkingCard({ thoughtText, isStreaming }: ThinkingCardProps) {
         type="button"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] hover:bg-[#E8F0FC] border border-[#D9E1EF] text-xs font-medium text-[#2E2252] hover:text-[#103F91] transition-colors cursor-pointer whitespace-nowrap"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] hover:bg-[#F2EEF9] border border-[#D9E1EF] text-xs font-medium text-[#2E2252] hover:text-[#2E2252] transition-colors cursor-pointer whitespace-nowrap"
       >
-        <Brain className="w-3.5 h-3.5 text-[#185ABD]" />
+        <Brain className="w-3.5 h-3.5 text-[#4A3680]" />
         <span>{isStreaming ? 'Thinking...' : 'Thought process'}</span>
         {isOpen ? (
           <ChevronDown className="w-3 h-3 text-[#585470]" />
