@@ -34,6 +34,9 @@ export default defineConfig(() => {
       },
     },
     server: {
+      // Preview proxies (e.g. *.e2b.app) and other hosts must be accepted, otherwise
+      // Vite's host allowlist blocks the embedded preview with HTTP 403.
+      allowedHosts: true as const,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',

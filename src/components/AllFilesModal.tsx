@@ -1,14 +1,14 @@
 import { Download, Eye, X } from 'lucide-react';
-import type { DocxAttachment } from '../types/vod';
-import { categorizeFilesByTime, formatBytes, formatClockTime } from '../utils/format';
-import { WordDocIcon } from './VodBrandMarks';
+import type { PdfAttachment } from '../types/vod';
+import { categorizeFilesByTime, formatBytes, formatClockTime, formatPageCount } from '../utils/format';
+import { PdfDocIcon } from './VodBrandMarks';
 
 interface AllFilesModalProps {
   isOpen: boolean;
   title: string;
-  files: DocxAttachment[];
+  files: PdfAttachment[];
   onClose: () => void;
-  onOpenFile: (file: DocxAttachment) => void;
+  onOpenFile: (file: PdfAttachment) => void;
 }
 
 export function AllFilesModal({
@@ -34,7 +34,7 @@ export function AllFilesModal({
           <div>
             <h2 className="font-display text-base font-bold text-[#1E1935]">{title}</h2>
             <p className="text-xs text-[#585470] font-mono-tabular mt-0.5">
-              {files.length} Word document{files.length === 1 ? '' : 's'}
+              {files.length} PDF document{files.length === 1 ? '' : 's'}
             </p>
           </div>
           <button
@@ -50,7 +50,7 @@ export function AllFilesModal({
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {groups.length === 0 ? (
             <div className="p-8 text-center text-sm text-[#585470]">
-              No .docx files in this task yet.
+              No .pdf files in this task yet.
             </div>
           ) : (
             groups.map((group) => (
@@ -65,13 +65,13 @@ export function AllFilesModal({
                       className="px-4 py-3 flex items-center justify-between gap-4 hover:bg-[#F4F6FB] transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <WordDocIcon className="w-9 h-9 shrink-0" />
+                        <PdfDocIcon className="w-9 h-9 shrink-0" />
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-[#1E1935] truncate">
                             {file.filename}
                           </div>
                           <div className="text-xs text-[#585470] font-mono-tabular mt-0.5">
-                            DOCX · {formatBytes(file.sizeBytes)} · {formatClockTime(file.updatedAt)}
+                            PDF · {formatPageCount(file.pageCount)} · {formatBytes(file.sizeBytes)} · {formatClockTime(file.updatedAt)}
                           </div>
                         </div>
                       </div>
@@ -83,7 +83,7 @@ export function AllFilesModal({
                             onOpenFile(file);
                             onClose();
                           }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-[#2E2252] bg-white border border-[#D9E1EF] hover:border-[#185ABD] hover:text-[#185ABD] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-[#2E2252] bg-white border border-[#D9E1EF] hover:border-[#4A3680] hover:text-[#4A3680] inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>Open</span>
@@ -91,7 +91,7 @@ export function AllFilesModal({
                         <a
                           href={`/api/files/${encodeURIComponent(file.id)}/download`}
                           download={file.filename}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-[#185ABD] hover:bg-[#103F91] inline-flex items-center gap-1.5 whitespace-nowrap"
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-[#2E2252] hover:bg-[#3E2E6E] inline-flex items-center gap-1.5 whitespace-nowrap"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>Download</span>

@@ -1,6 +1,31 @@
-import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2, Play } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileCheck2,
+  FilePlus2,
+  FileSearch,
+  Layers,
+  Loader2,
+  MessageSquare,
+  Play,
+  Search,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AgentToolStep } from '../types/vod';
+
+/** PDF-native tool icons mirroring the agent tool declarations. */
+const TOOL_ICONS: Record<string, typeof FilePlus2> = {
+  list_files: FileSearch,
+  inspect_pdf: FileSearch,
+  search_pdf: Search,
+  create_pdf: FilePlus2,
+  edit_pdf: FilePlus2,
+  comment_pdf: MessageSquare,
+  fill_pdf_form: FileCheck2,
+  organize_pdf: Layers,
+};
 
 interface InlineToolTilesProps {
   steps: AgentToolStep[];
@@ -40,7 +65,7 @@ export function InlineToolTiles({ steps, isTurnActive }: InlineToolTilesProps) {
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] hover:bg-[#E8F0FC] border border-[#D9E1EF] text-xs font-medium text-[#2E2252] hover:text-[#103F91] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] hover:bg-[#F2EEF9] border border-[#D9E1EF] text-xs font-medium text-[#2E2252] hover:text-[#2E2252] transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             {hasError ? (
               <AlertCircle className="w-3.5 h-3.5 text-[#D97706]" />
@@ -68,6 +93,10 @@ export function InlineToolTiles({ steps, isTurnActive }: InlineToolTilesProps) {
                 ) : (
                   <Check className="w-3 h-3 text-[#16A34A] shrink-0" />
                 )}
+                {(() => {
+                  const ToolIcon = TOOL_ICONS[step.toolName];
+                  return ToolIcon ? <ToolIcon className="w-3 h-3 text-[#4A3680] shrink-0" /> : null;
+                })()}
                 <span className="font-medium">{step.label}</span>
                 {step.summary && (
                   <span className="text-[#585470] font-mono-tabular">· {step.summary}</span>
@@ -86,7 +115,7 @@ export function InlineToolTiles({ steps, isTurnActive }: InlineToolTilesProps) {
                 <Play className="w-3 h-3 text-[#585470] shrink-0" />
               )}
               {step.status === 'processing' && (
-                <Loader2 className="w-3 h-3 text-[#185ABD] animate-spin shrink-0" />
+                <Loader2 className="w-3 h-3 text-[#4A3680] animate-spin shrink-0" />
               )}
               {step.status === 'finished' && (
                 <Check className="w-3 h-3 text-[#16A34A] shrink-0" />
@@ -94,7 +123,11 @@ export function InlineToolTiles({ steps, isTurnActive }: InlineToolTilesProps) {
               {step.status === 'error' && (
                 <AlertCircle className="w-3 h-3 text-[#DC2626] shrink-0" />
               )}
-              <span className="font-medium">{step.label}</span>
+              {(() => {
+                  const ToolIcon = TOOL_ICONS[step.toolName];
+                  return ToolIcon ? <ToolIcon className="w-3 h-3 text-[#4A3680] shrink-0" /> : null;
+                })()}
+                <span className="font-medium">{step.label}</span>
               <span className="text-[#585470]">
                 {step.status === 'started'
                   ? 'Started'

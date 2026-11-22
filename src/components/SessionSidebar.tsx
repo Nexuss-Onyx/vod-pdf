@@ -53,7 +53,7 @@ export function SessionSidebar({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search chats..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#D9E1EF] rounded-lg text-[#1E1935] placeholder:text-[#706B88] focus:outline-none focus:border-[#185ABD]"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#D9E1EF] rounded-lg text-[#1E1935] placeholder:text-[#706B88] focus:outline-none focus:border-[#4A3680]"
             />
           </div>
           <button
@@ -84,7 +84,7 @@ export function SessionSidebar({
                   key={session.id}
                   className={`group flex items-start gap-2 rounded-lg px-2.5 py-2 transition-colors ${
                     isActive
-                      ? 'bg-white border border-[#C7D8F4] shadow-[0_1px_2px_rgba(46,34,82,0.06)]'
+                      ? 'bg-white border border-[#D6C9EE] shadow-[0_1px_2px_rgba(46,34,82,0.06)]'
                       : 'border border-transparent hover:bg-white/65'
                   }`}
                 >
@@ -96,7 +96,7 @@ export function SessionSidebar({
                     <div className="flex items-center gap-2">
                       <MessageSquare
                         className={`w-3.5 h-3.5 shrink-0 ${
-                          isActive ? 'text-[#185ABD]' : 'text-[#585470]'
+                          isActive ? 'text-[#4A3680]' : 'text-[#585470]'
                         }`}
                       />
                       <span
@@ -108,7 +108,7 @@ export function SessionSidebar({
                       </span>
                     </div>
                     <div className="mt-0.5 pl-5.5 text-[11px] text-[#585470] font-mono-tabular truncate">
-                      {formatShortTime(session.updatedAt)} · {session.fileCount} docx
+                      {formatShortTime(session.updatedAt)} · {session.fileCount} PDF
                     </div>
                   </button>
 

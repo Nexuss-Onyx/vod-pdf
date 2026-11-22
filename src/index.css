@@ -18,20 +18,20 @@
     --vod-ink: #1e1935;
     --vod-ink-muted: #585470;
 
-    /* Swappable App Suite Accent Tokens — Default: Microsoft Word */
-    --app-accent: #185abd;
-    --app-accent-deep: #103f91;
-    --app-accent-light: #41a5ee;
-    --app-accent-soft: #e8f0fc;
-    --app-accent-border: #c7d8f4;
+    /* Swappable App Suite Accent Tokens — Default: Vod PDF Amethyst */
+    --app-accent: #4a3680;
+    --app-accent-deep: #2e2252;
+    --app-accent-light: #b9a9dc;
+    --app-accent-soft: #f2eef9;
+    --app-accent-border: #d6c9ee;
   }
 
-  [data-vod-app="word"] {
-    --app-accent: #185abd;
-    --app-accent-deep: #103f91;
-    --app-accent-light: #41a5ee;
-    --app-accent-soft: #e8f0fc;
-    --app-accent-border: #c7d8f4;
+  [data-vod-app="pdf"] {
+    --app-accent: #4a3680;
+    --app-accent-deep: #2e2252;
+    --app-accent-light: #b9a9dc;
+    --app-accent-soft: #f2eef9;
+    --app-accent-border: #d6c9ee;
   }
 
   html,
@@ -61,23 +61,94 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Clean Microsoft Word Print-Layout page presentation inside docx-preview */
-.docx-viewer-host .docx-wrapper {
-  background: transparent !important;
-  padding: 24px 14px !important;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 22px;
+/* ===================================================================
+   Vod PDF viewer — pages are rendered by our in-app engine (canvas +
+   selectable text layer). No iframe/embed/object PDF rendering.
+   =================================================================== */
+
+.pdf-viewer-host {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(74, 54, 128, 0.05), transparent 60%),
+    #eceff7;
 }
 
-.docx-viewer-host .docx-wrapper > section.docx {
+.pdf-page {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  position: relative;
+  flex: 0 0 auto;
+  background: #ffffff;
+  border-radius: 3px;
+  overflow: hidden;
   box-shadow:
     0 4px 18px rgba(46, 34, 82, 0.08),
-    0 0 0 1px rgba(16, 63, 145, 0.12) !important;
-  border-radius: 3px;
-  margin-bottom: 0 !important;
-  background: #ffffff !important;
+    0 0 0 1px rgba(46, 34, 82, 0.1);
+}
+
+.pdf-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
+/* pdf.js text layer: invisible by design, selectable/copyable, scaled by
+   our --total-scale-factor variable. */
+.pdf-text-layer {
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+}
+
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-text-layer > :not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+
+.pdf-text-layer ::selection {
+  background: rgba(74, 54, 128, 0.26);
+}
+
+.pdf-page-number {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  z-index: 2;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(244, 246, 251, 0.9);
+  border: 1px solid rgba(217, 225, 239, 0.9);
+  color: #585470;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.5;
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

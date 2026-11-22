@@ -1,18 +1,18 @@
 import { Eye, Loader2, Upload, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import type { DocxAttachment } from '../types/vod';
-import { categorizeFilesByTime, formatBytes, formatClockTime } from '../utils/format';
-import { WordDocIcon } from './VodBrandMarks';
+import type { PdfAttachment } from '../types/vod';
+import { categorizeFilesByTime, formatBytes, formatClockTime, formatPageCount } from '../utils/format';
+import { PdfDocIcon } from './VodBrandMarks';
 
 interface AttachmentPopoverProps {
   isOpen: boolean;
-  files: DocxAttachment[];
+  files: PdfAttachment[];
   isUploading: boolean;
   uploadError: string | null;
   onClose: () => void;
   onTriggerUpload: () => void;
-  onSelectFileToAttach: (file: DocxAttachment) => void;
-  onPreviewFile: (file: DocxAttachment) => void;
+  onSelectFileToAttach: (file: PdfAttachment) => void;
+  onPreviewFile: (file: PdfAttachment) => void;
 }
 
 export function AttachmentPopover({
@@ -66,14 +66,14 @@ export function AttachmentPopover({
           type="button"
           disabled={isUploading}
           onClick={onTriggerUpload}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#185ABD] hover:bg-[#103F91] text-white text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[#185ABD]"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#2E2252] hover:bg-[#3E2E6E] text-white text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[#2E2252]"
         >
           {isUploading ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
           ) : (
             <Upload className="w-3.5 h-3.5" />
           )}
-          <span>{isUploading ? 'Uploading...' : 'Upload .docx'}</span>
+          <span>{isUploading ? 'Uploading...' : 'Upload .pdf'}</span>
         </button>
 
         <button
@@ -96,7 +96,7 @@ export function AttachmentPopover({
       <div className="max-h-72 overflow-y-auto p-2.5 space-y-3">
         {groups.length === 0 ? (
           <div className="py-6 text-center text-xs text-[#585470]">
-            No documents yet. Upload a .docx file to begin.
+            No PDFs yet. Upload a .pdf file to begin.
           </div>
         ) : (
           groups.map((group) => (
@@ -108,7 +108,7 @@ export function AttachmentPopover({
                 {group.files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#E8F0FC]/60 transition-colors"
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#F2EEF9]/60 transition-colors"
                   >
                     <button
                       type="button"
@@ -118,13 +118,13 @@ export function AttachmentPopover({
                       }}
                       className="flex-1 min-w-0 flex items-center gap-2.5 text-left cursor-pointer"
                     >
-                      <WordDocIcon className="w-8 h-8 shrink-0" />
+                      <PdfDocIcon className="w-8 h-8 shrink-0" />
                       <div className="min-w-0">
                         <div className="text-xs font-semibold text-[#1E1935] truncate">
                           {file.filename}
                         </div>
                         <div className="text-[11px] text-[#585470] font-mono-tabular truncate">
-                          {formatBytes(file.sizeBytes)} · {formatClockTime(file.updatedAt)}
+                          {formatPageCount(file.pageCount)} · {formatBytes(file.sizeBytes)} · {formatClockTime(file.updatedAt)}
                         </div>
                       </div>
                     </button>
@@ -136,7 +136,7 @@ export function AttachmentPopover({
                         onClose();
                       }}
                       aria-label={`Preview ${file.filename}`}
-                      className="p-1.5 rounded-lg text-[#585470] hover:text-[#185ABD] hover:bg-white cursor-pointer shrink-0"
+                      className="p-1.5 rounded-lg text-[#585470] hover:text-[#4A3680] hover:bg-white cursor-pointer shrink-0"
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>

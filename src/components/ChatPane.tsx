@@ -19,32 +19,32 @@ import remarkGfm from 'remark-gfm';
 import type {
   AgentToolStep,
   ChatMessage,
-  DocxAttachment,
+  PdfAttachment,
 } from '../types/vod';
-import { formatBytes, formatClockTime, readFileAsBase64 } from '../utils/format';
+import { formatBytes, formatClockTime, formatPageCount, readFileAsBase64 } from '../utils/format';
 import { saveLocalFileBlob } from '../utils/localWorkspaceDb';
 import { AttachmentPopover } from './AttachmentPopover';
-import { DocxAttachmentRow } from './DocxAttachmentCard';
+import { PdfAttachmentRow } from './PdfAttachmentCard';
 import { InlineToolTiles } from './InlineToolTiles';
 import { ThinkingCard } from './ThinkingCard';
-import { VodLogo, WordDocIcon } from './VodBrandMarks';
+import { PdfDocIcon, VodLogo } from './VodBrandMarks';
 
 interface ChatPaneProps {
   sessionId: string;
   messages: ChatMessage[];
-  allFiles: DocxAttachment[];
+  allFiles: PdfAttachment[];
   activeFileId: string | null;
   isStreaming: boolean;
   liveThoughtText: string;
   liveSteps: AgentToolStep[];
   liveText: string;
-  pendingFileAttachment: DocxAttachment | null;
+  pendingFileAttachment: PdfAttachment | null;
   onClearPendingFile: () => void;
-  onSelectPendingFile: (file: DocxAttachment) => void;
-  onAttachUploadedFile: (file: DocxAttachment) => void;
+  onSelectPendingFile: (file: PdfAttachment) => void;
+  onAttachUploadedFile: (file: PdfAttachment) => void;
   onSendMessage: (prompt: string) => void;
   onRegenerateMessage: (assistantMessageId: string) => void;
-  onOpenFile: (file: DocxAttachment) => void;
+  onOpenFile: (file: PdfAttachment) => void;
   onViewAllFiles: () => void;
 }
 
@@ -53,25 +53,25 @@ const STARTER_PROMPTS = [
     title: 'Executive Operations Memo',
     icon: FilePlus2,
     prompt:
-      'Create an executive Operations & Staffing Readiness Memo (.docx) with a summary callout, regional shift table, and priority action items.',
+      'Create an executive Operations & Staffing Readiness Memo PDF with a summary callout, regional shift table, and priority action items.',
   },
   {
-    title: 'Vendor MSA & Redline',
+    title: 'Vendor MSA Review',
     icon: Scale,
     prompt:
-      'Draft a SaaS Vendor Master Services Agreement (.docx) covering SLA uptime, Net 30 payment terms, and liability caps, and add a review comment on the indemnity clause.',
+      'Draft a SaaS Vendor Master Services Agreement PDF covering SLA uptime, Net 30 payment terms, and liability caps, then add a review comment on the indemnity clause.',
   },
   {
     title: 'Project Kickoff Brief',
     icon: FileCheck2,
     prompt:
-      'Build a structured Q1 Product Launch Brief (.docx) with cover page, milestones table, stakeholder roles, and risk matrix.',
+      'Build a structured Q1 Product Launch Brief PDF with a cover page, milestones table, stakeholder roles, and risk matrix.',
   },
   {
     title: 'Standard Operating Procedure',
     icon: ClipboardList,
     prompt:
-      'Generate an Incident Escalation SOP (.docx) with severity tiers table, numbered response steps, and audit checklist.',
+      'Generate an Incident Escalation SOP PDF with a severity tiers table, numbered response steps, and audit checklist.',
   },
 ];
 
@@ -161,8 +161,8 @@ export function ChatPane({
   const handleFileSelected = async (file: File | undefined) => {
     if (!file) return;
     setUploadError(null);
-    if (!file.name.toLowerCase().endsWith('.docx')) {
-      setUploadError('Please select a valid .docx Word document.');
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadError('Vod PDF only accepts .pdf documents. Export Word files to PDF first.');
       return;
     }
 
@@ -190,7 +190,7 @@ export function ChatPane({
       setIsAttachmentMenuOpen(false);
       textareaRef.current?.focus();
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Failed to upload .docx file.');
+      setUploadError(err instanceof Error ? err.message : 'Failed to upload the PDF file.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -199,7 +199,7 @@ export function ChatPane({
 
   return (
     <section
-      aria-label="Vod Word Chat"
+      aria-label="Vod PDF Chat"
       className="flex-1 flex flex-col min-w-0 bg-[#F4F6FB] relative"
     >
       {/* Message Viewport */}
@@ -216,14 +216,14 @@ export function ChatPane({
                 <span aria-hidden="true" className="text-[#C3CFE4]">
                   ·
                 </span>
-                <span className="text-[#185ABD]">Microsoft Word Workspace</span>
+                <span className="text-[#4A3680]">PDF Document Workspace</span>
               </div>
               <h1 className="mt-2 font-display text-2xl sm:text-3xl font-bold text-[#1E1935] tracking-tight text-balance">
-                What Word document can I create or edit?
+                What PDF can I create or edit?
               </h1>
               <p className="mt-2 text-sm text-[#585470] max-w-xl leading-relaxed">
-                Draft executive briefs, apply tracked redlines, anchor review comments, or upload a
-                .docx document to inspect.
+                Draft executive briefs, annotate review copies, search existing PDFs, or upload a
+                .pdf document to inspect and edit.
               </p>
 
               <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -234,10 +234,10 @@ export function ChatPane({
                       key={item.title}
                       type="button"
                       onClick={() => onSendMessage(item.prompt)}
-                      className="group p-4 rounded-xl border border-[#D9E1EF] bg-white hover:border-[#185ABD] hover:bg-[#E8F0FC]/35 text-left transition-all cursor-pointer shadow-[0_1px_2px_rgba(46,34,82,0.04)] focus-visible:outline-2 focus-visible:outline-[#185ABD]"
+                      className="group p-4 rounded-xl border border-[#D9E1EF] bg-white hover:border-[#4A3680] hover:bg-[#F2EEF9]/45 text-left transition-all cursor-pointer shadow-[0_1px_2px_rgba(46,34,82,0.04)] focus-visible:outline-2 focus-visible:outline-[#2E2252]"
                     >
-                      <div className="flex items-center gap-2.5 text-sm font-semibold text-[#1E1935] group-hover:text-[#103F91]">
-                        <span className="w-8 h-8 rounded-lg bg-[#E8F0FC] text-[#185ABD] flex items-center justify-center shrink-0">
+                      <div className="flex items-center gap-2.5 text-sm font-semibold text-[#1E1935] group-hover:text-[#2E2252]">
+                        <span className="w-8 h-8 rounded-lg bg-[#F2EEF9] text-[#4A3680] flex items-center justify-center shrink-0">
                           <Icon className="w-4 h-4" />
                         </span>
                         <span>{item.title}</span>
@@ -256,7 +256,7 @@ export function ChatPane({
             if (msg.role === 'user') {
               return (
                 <div key={msg.id} className="flex flex-col items-end">
-                  <div className="max-w-xl rounded-xl border border-[#C7D8F4] bg-[#E8F0FC]/70 px-4 py-3 text-[15px] leading-relaxed text-[#1E1935]">
+                  <div className="max-w-xl rounded-xl border border-[#D6C9EE] bg-[#F2EEF9]/70 px-4 py-3 text-[15px] leading-relaxed text-[#1E1935]">
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                     {msg.attachments && msg.attachments.length > 0 && (
                       <div className="mt-2.5 flex flex-wrap gap-2">
@@ -265,9 +265,9 @@ export function ChatPane({
                             key={att.id}
                             type="button"
                             onClick={() => onOpenFile(att)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-white border border-[#C7D8F4] px-2.5 py-1.5 text-xs font-medium text-[#1E1935] hover:border-[#185ABD] cursor-pointer"
+                            className="inline-flex items-center gap-2 rounded-lg bg-white border border-[#D6C9EE] px-2.5 py-1.5 text-xs font-medium text-[#1E1935] hover:border-[#4A3680] cursor-pointer"
                           >
-                            <FileText className="w-3.5 h-3.5 text-[#185ABD]" />
+                            <FileText className="w-3.5 h-3.5 text-[#4A3680]" />
                             <span>{att.filename}</span>
                             <span className="text-[#585470] font-mono-tabular">
                               {formatBytes(att.sizeBytes)}
@@ -314,7 +314,7 @@ export function ChatPane({
                   )}
 
                   {msg.attachments && msg.attachments.length > 0 && (
-                    <DocxAttachmentRow
+                    <PdfAttachmentRow
                       attachments={msg.attachments}
                       activeFileId={activeFileId}
                       onOpenFile={onOpenFile}
@@ -324,14 +324,14 @@ export function ChatPane({
 
                   <div className="mt-4 pt-2.5 border-t border-[#ECEFF7] flex items-center justify-between gap-3 text-[11px] text-[#585470]">
                     <span className="font-mono-tabular whitespace-nowrap">
-                      Vod Word · {formatClockTime(msg.createdAt)}
+                      Vod PDF · {formatClockTime(msg.createdAt)}
                     </span>
 
                     <div className="flex items-center gap-3 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleCopy(msg.id, msg.content)}
-                        className="inline-flex items-center gap-1 hover:text-[#185ABD] transition-colors cursor-pointer whitespace-nowrap"
+                        className="inline-flex items-center gap-1 hover:text-[#4A3680] transition-colors cursor-pointer whitespace-nowrap"
                       >
                         {copiedId === msg.id ? (
                           <Check className="w-3.5 h-3.5 text-[#16A34A]" />
@@ -345,7 +345,7 @@ export function ChatPane({
                         type="button"
                         disabled={isStreaming}
                         onClick={() => onRegenerateMessage(msg.id)}
-                        className="inline-flex items-center gap-1 hover:text-[#185ABD] transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap"
+                        className="inline-flex items-center gap-1 hover:text-[#4A3680] transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Regenerate</span>
@@ -363,7 +363,7 @@ export function ChatPane({
                 aria-hidden="true"
                 className="w-9 h-9 rounded-xl bg-white border border-[#D9E1EF] flex items-center justify-center shrink-0 mt-0.5"
               >
-                <Loader2 className="w-4 h-4 animate-spin text-[#185ABD]" />
+                <Loader2 className="w-4 h-4 animate-spin text-[#4A3680]" />
               </div>
 
               <div className="flex-1 min-w-0 rounded-xl bg-white border border-[#D9E1EF] px-5 py-4 shadow-[0_1px_3px_rgba(46,34,82,0.04)]">
@@ -396,7 +396,7 @@ export function ChatPane({
           type="button"
           onClick={() => scrollToBottom(true)}
           aria-label="Scroll to latest message"
-          className="absolute right-6 bottom-28 z-20 w-10 h-10 rounded-full bg-white border border-[#D9E1EF] shadow-[0_4px_14px_rgba(46,34,82,0.12)] flex items-center justify-center text-[#2E2252] hover:text-[#185ABD] hover:border-[#185ABD] transition-colors cursor-pointer"
+          className="absolute right-6 bottom-28 z-20 w-10 h-10 rounded-full bg-white border border-[#D9E1EF] shadow-[0_4px_14px_rgba(46,34,82,0.12)] flex items-center justify-center text-[#2E2252] hover:text-[#4A3680] hover:border-[#4A3680] transition-colors cursor-pointer"
         >
           <ArrowDown className="w-4 h-4" />
         </button>
@@ -419,14 +419,14 @@ export function ChatPane({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".docx"
+            accept=".pdf,application/pdf"
             className="hidden"
             onChange={(e) => handleFileSelected(e.target.files?.[0])}
           />
 
           {pendingFileAttachment && (
-            <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#C7D8F4] bg-white px-3 py-1.5 text-xs text-[#1E1935] shadow-xs">
-              <WordDocIcon className="w-5 h-5 shrink-0" />
+            <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#D6C9EE] bg-white px-3 py-1.5 text-xs text-[#1E1935] shadow-xs">
+              <PdfDocIcon className="w-5 h-5 shrink-0" />
               <span className="font-medium">{pendingFileAttachment.filename}</span>
               <span className="text-[#585470] font-mono-tabular">
                 {formatBytes(pendingFileAttachment.sizeBytes)}
@@ -442,7 +442,7 @@ export function ChatPane({
             </div>
           )}
 
-          <div className="rounded-xl border border-[#C3CFE4] bg-white shadow-[0_2px_10px_rgba(46,34,82,0.05)] focus-within:border-[#185ABD] focus-within:ring-2 focus-within:ring-[#185ABD]/15 transition-all flex items-end gap-2 px-3 py-2.5">
+          <div className="rounded-xl border border-[#C3CFE4] bg-white shadow-[0_2px_10px_rgba(46,34,82,0.05)] focus-within:border-[#4A3680] focus-within:ring-2 focus-within:ring-[#4A3680]/15 transition-all flex items-end gap-2 px-3 py-2.5">
             {/* Icon-only attachment button */}
             <button
               type="button"
@@ -453,15 +453,15 @@ export function ChatPane({
               onClick={() => setIsAttachmentMenuOpen((v) => !v)}
               className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer shrink-0 disabled:opacity-50 ${
                 isAttachmentMenuOpen
-                  ? 'bg-[#E8F0FC] text-[#185ABD]'
-                  : 'text-[#585470] hover:text-[#185ABD] hover:bg-[#E8F0FC]/70'
+                  ? 'bg-[#F2EEF9] text-[#4A3680]'
+                  : 'text-[#585470] hover:text-[#4A3680] hover:bg-[#F2EEF9]/70'
               }`}
             >
               <Paperclip className="w-4 h-4" />
             </button>
 
             <label htmlFor="vod-chat-input" className="sr-only">
-              Message Vod Word
+              Message Vod PDF
             </label>
             <textarea
               id="vod-chat-input"
@@ -470,7 +470,7 @@ export function ChatPane({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Message Vod Word (.docx)..."
+              placeholder="Message Vod PDF (.pdf)..."
               className="flex-1 resize-none bg-transparent py-2 text-sm text-[#1E1935] placeholder:text-[#706B88] focus:outline-none max-h-36"
             />
 
@@ -478,7 +478,7 @@ export function ChatPane({
               type="submit"
               aria-label="Send message"
               disabled={!input.trim() || isStreaming}
-              className="w-9 h-9 rounded-lg bg-[#185ABD] hover:bg-[#103F91] disabled:bg-[#E4E9F2] disabled:text-[#8E98AE] text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              className="w-9 h-9 rounded-lg bg-[#2E2252] hover:bg-[#3E2E6E] disabled:bg-[#E4E9F2] disabled:text-[#8E98AE] text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
             >
               {isStreaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

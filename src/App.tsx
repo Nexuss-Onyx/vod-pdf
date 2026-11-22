@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AllFilesModal } from './components/AllFilesModal';
 import { ChatPane } from './components/ChatPane';
-import { DocxViewerPane } from './components/DocxViewerPane';
+import { PdfViewerPane } from './components/PdfViewerPane';
 import { SessionSidebar } from './components/SessionSidebar';
 import { TopBar } from './components/TopBar';
 import type {
   AgentToolStep,
   ChatMessage,
   ChatSession,
-  DocxAttachment,
+  PdfAttachment,
   WorkspaceSnapshot,
 } from './types/vod';
 import {
@@ -25,18 +25,18 @@ import {
 } from './utils/localWorkspaceDb';
 import { mergeSessionMessages, mergeWorkspaceSnapshots } from './utils/syncMerge';
 
-const SESSION_STORAGE_KEY = 'vod_word_active_session';
+const SESSION_STORAGE_KEY = 'vod_pdf_active_session';
 
 export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [allFiles, setAllFiles] = useState<DocxAttachment[]>([]);
+  const [allFiles, setAllFiles] = useState<PdfAttachment[]>([]);
 
   const [activeSessionId, setActiveSessionId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessionFiles, setSessionFiles] = useState<DocxAttachment[]>([]);
+  const [sessionFiles, setSessionFiles] = useState<PdfAttachment[]>([]);
 
-  const [viewerFile, setViewerFile] = useState<DocxAttachment | null>(null);
-  const [pendingFileAttachment, setPendingFileAttachment] = useState<DocxAttachment | null>(null);
+  const [viewerFile, setViewerFile] = useState<PdfAttachment | null>(null);
+  const [pendingFileAttachment, setPendingFileAttachment] = useState<PdfAttachment | null>(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAllFilesOpen, setIsAllFilesOpen] = useState(false);
@@ -63,7 +63,7 @@ export default function App() {
       const data = (await res.json()) as {
         session: ChatSession;
         messages: ChatMessage[];
-        files: DocxAttachment[];
+        files: PdfAttachment[];
       };
 
       const localMsgs = (await loadLocalSessionMessages(sessionId)) || [];
@@ -85,7 +85,7 @@ export default function App() {
   }, []);
 
   const loadSessionLocalFirst = useCallback(
-    async (sessionId: string, filesSource?: DocxAttachment[]) => {
+    async (sessionId: string, filesSource?: PdfAttachment[]) => {
       if (!sessionId) return;
       const localMsgs = await loadLocalSessionMessages(sessionId);
       const sourceFiles = filesSource ?? allFilesRef.current;
@@ -452,7 +452,7 @@ export default function App() {
 
   return (
     <div
-      data-vod-app="word"
+      data-vod-app="pdf"
       className="h-screen w-screen overflow-hidden flex flex-col bg-[#F4F6FB] text-[#1E1935]"
     >
       <TopBar
@@ -503,7 +503,7 @@ export default function App() {
           />
 
           {viewerFile && (
-            <DocxViewerPane
+            <PdfViewerPane
               file={viewerFile}
               onClose={() => setViewerFile(null)}
               onAskToEdit={(file) => {
