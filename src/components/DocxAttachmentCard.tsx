@@ -1,6 +1,7 @@
-import { FileSearch, FileText } from 'lucide-react';
+import { FileSearch } from 'lucide-react';
 import type { DocxAttachment } from '../types/vod';
 import { formatBytes } from '../utils/format';
+import { WordDocIcon } from './VodBrandMarks';
 
 interface DocxAttachmentRowProps {
   attachments: DocxAttachment[];
@@ -29,20 +30,18 @@ export function DocxAttachmentRow({
             type="button"
             onClick={() => onOpenFile(file)}
             aria-label={`Open ${file.filename} in DOCX viewer`}
-            className={`group rounded-xl border px-3.5 py-2.5 flex items-center gap-3 text-left transition-all cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1A73E8] ${
+            className={`group rounded-xl border px-3.5 py-2.5 flex items-center gap-3 text-left transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#185ABD] ${
               isActive
-                ? 'border-[#1A73E8] bg-blue-50/40'
-                : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
+                ? 'border-[#185ABD] bg-[#E8F0FC]/75 shadow-[0_1px_3px_rgba(24,90,189,0.12)]'
+                : 'border-[#D9E1EF] bg-[#F4F6FB] hover:bg-[#E8F0FC]/45 hover:border-[#93B4E8]'
             }`}
           >
-            <div className="w-10 h-10 rounded-lg bg-[#1A73E8] text-white flex items-center justify-center shrink-0">
-              <FileText className="w-5 h-5" />
-            </div>
+            <WordDocIcon className="w-10 h-10 shrink-0" />
             <div className="min-w-0 pr-1">
-              <div className="text-[13.5px] font-semibold text-slate-900 leading-tight truncate max-w-[220px]">
+              <div className="text-[13.5px] font-semibold text-[#1E1935] leading-tight truncate max-w-[230px]">
                 {file.filename}
               </div>
-              <div className="text-[12px] text-slate-500 font-mono-tabular mt-0.5 whitespace-nowrap">
+              <div className="text-[12px] text-[#585470] font-mono-tabular mt-0.5 whitespace-nowrap">
                 DOCX · {formatBytes(file.sizeBytes)}
               </div>
             </div>
@@ -53,9 +52,9 @@ export function DocxAttachmentRow({
       <button
         type="button"
         onClick={onViewAllFiles}
-        className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 px-5 py-3.5 flex items-center gap-2.5 text-[13.5px] font-medium text-slate-700 transition-all cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04)] whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1A73E8]"
+        className="rounded-xl border border-[#D9E1EF] bg-white hover:bg-[#F4F6FB] hover:border-[#93B4E8] px-4 py-3 flex items-center gap-2 text-[13px] font-medium text-[#2E2252] hover:text-[#103F91] transition-colors cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#185ABD]"
       >
-        <FileSearch className="w-4 h-4 text-slate-500 shrink-0" />
+        <FileSearch className="w-4 h-4 text-[#185ABD] shrink-0" />
         <span>View all files in this task</span>
       </button>
     </div>

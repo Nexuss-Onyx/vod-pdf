@@ -33,27 +33,27 @@ export function InlineToolTiles({ steps, isTurnActive }: InlineToolTilesProps) {
   ).length;
 
   return (
-    <div className="mb-2.5">
+    <div className="mb-3">
       {allFinished ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/80 hover:bg-white border border-[#E2DFD7] text-xs font-medium text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] hover:bg-[#E8F0FC] border border-[#D9E1EF] text-xs font-medium text-[#2E2252] hover:text-[#103F91] transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             {hasError ? (
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+              <AlertCircle className="w-3.5 h-3.5 text-[#D97706]" />
             ) : (
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
+              <Check className="w-3.5 h-3.5 text-[#16A34A]" />
             )}
             <span>
               {steps.length} tool{steps.length === 1 ? '' : 's'} · Done
             </span>
             {isExpanded ? (
-              <ChevronDown className="w-3 h-3 text-neutral-400" />
+              <ChevronDown className="w-3 h-3 text-[#585470]" />
             ) : (
-              <ChevronRight className="w-3 h-3 text-neutral-400" />
+              <ChevronRight className="w-3 h-3 text-[#585470]" />
             )}
           </button>
 
@@ -61,16 +61,16 @@ export function InlineToolTiles({ steps, isTurnActive }: InlineToolTilesProps) {
             steps.map((step) => (
               <span
                 key={step.id}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E2DFD7] text-[11px] text-neutral-700"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] border border-[#D9E1EF] text-[11px] text-[#1E1935]"
               >
                 {step.status === 'error' ? (
-                  <AlertCircle className="w-3 h-3 text-red-600 shrink-0" />
+                  <AlertCircle className="w-3 h-3 text-[#DC2626] shrink-0" />
                 ) : (
-                  <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <Check className="w-3 h-3 text-[#16A34A] shrink-0" />
                 )}
                 <span className="font-medium">{step.label}</span>
                 {step.summary && (
-                  <span className="text-neutral-500 font-mono-tabular">· {step.summary}</span>
+                  <span className="text-[#585470] font-mono-tabular">· {step.summary}</span>
                 )}
               </span>
             ))}
@@ -80,22 +80,22 @@ export function InlineToolTiles({ steps, isTurnActive }: InlineToolTilesProps) {
           {steps.map((step) => (
             <span
               key={step.id}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E2DFD7] text-[11px] text-neutral-800"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] border border-[#D9E1EF] text-[11px] text-[#1E1935]"
             >
               {step.status === 'started' && (
-                <Play className="w-3 h-3 text-neutral-500 shrink-0" />
+                <Play className="w-3 h-3 text-[#585470] shrink-0" />
               )}
               {step.status === 'processing' && (
-                <Loader2 className="w-3 h-3 text-[#1A73E8] animate-spin shrink-0" />
+                <Loader2 className="w-3 h-3 text-[#185ABD] animate-spin shrink-0" />
               )}
               {step.status === 'finished' && (
-                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                <Check className="w-3 h-3 text-[#16A34A] shrink-0" />
               )}
               {step.status === 'error' && (
-                <AlertCircle className="w-3 h-3 text-red-600 shrink-0" />
+                <AlertCircle className="w-3 h-3 text-[#DC2626] shrink-0" />
               )}
               <span className="font-medium">{step.label}</span>
-              <span className="text-neutral-400">
+              <span className="text-[#585470]">
                 {step.status === 'started'
                   ? 'Started'
                   : step.status === 'processing'

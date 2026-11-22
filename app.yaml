@@ -1,0 +1,7 @@
+name: vod-word
+owner: tadi0781
+package: .
+env:
+  HOST: 0.0.0.0
+  NODE_ENV: production
+kind: wasmer.io/App.v0

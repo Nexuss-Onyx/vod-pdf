@@ -2,13 +2,15 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ClipboardList,
   Copy,
+  FileCheck2,
   FilePlus2,
   FileText,
   Loader2,
   Paperclip,
   RotateCcw,
-  Sparkles,
+  Scale,
   X,
 } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react';
@@ -20,10 +22,12 @@ import type {
   DocxAttachment,
 } from '../types/vod';
 import { formatBytes, formatClockTime, readFileAsBase64 } from '../utils/format';
+import { saveLocalFileBlob } from '../utils/localWorkspaceDb';
 import { AttachmentPopover } from './AttachmentPopover';
 import { DocxAttachmentRow } from './DocxAttachmentCard';
 import { InlineToolTiles } from './InlineToolTiles';
 import { ThinkingCard } from './ThinkingCard';
+import { VodLogo, WordDocIcon } from './VodBrandMarks';
 
 interface ChatPaneProps {
   sessionId: string;
@@ -47,21 +51,25 @@ interface ChatPaneProps {
 const STARTER_PROMPTS = [
   {
     title: 'Executive Operations Memo',
+    icon: FilePlus2,
     prompt:
       'Create an executive Operations & Staffing Readiness Memo (.docx) with a summary callout, regional shift table, and priority action items.',
   },
   {
     title: 'Vendor MSA & Redline',
+    icon: Scale,
     prompt:
       'Draft a SaaS Vendor Master Services Agreement (.docx) covering SLA uptime, Net 30 payment terms, and liability caps, and add a review comment on the indemnity clause.',
   },
   {
     title: 'Project Kickoff Brief',
+    icon: FileCheck2,
     prompt:
       'Build a structured Q1 Product Launch Brief (.docx) with cover page, milestones table, stakeholder roles, and risk matrix.',
   },
   {
     title: 'Standard Operating Procedure',
+    icon: ClipboardList,
     prompt:
       'Generate an Incident Escalation SOP (.docx) with severity tiers table, numbered response steps, and audit checklist.',
   },
@@ -160,7 +168,10 @@ export function ChatPane({
 
     setIsUploading(true);
     try {
-      const base64Data = await readFileAsBase64(file);
+      const [base64Data, arrayBuffer] = await Promise.all([
+        readFileAsBase64(file),
+        file.arrayBuffer(),
+      ]);
       const res = await fetch('/api/files/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,6 +185,7 @@ export function ChatPane({
       if (!res.ok) {
         throw new Error(data.error || 'Upload failed.');
       }
+      await saveLocalFileBlob(data.file.id, arrayBuffer, data.inspection);
       onAttachUploadedFile(data.file);
       setIsAttachmentMenuOpen(false);
       textareaRef.current?.focus();
@@ -188,7 +200,7 @@ export function ChatPane({
   return (
     <section
       aria-label="Vod Word Chat"
-      className="flex-1 flex flex-col min-w-0 bg-[#FAF9F6] relative"
+      className="flex-1 flex flex-col min-w-0 bg-[#F4F6FB] relative"
     >
       {/* Message Viewport */}
       <div
@@ -199,30 +211,43 @@ export function ChatPane({
         <div className="max-w-3xl mx-auto space-y-6">
           {messages.length === 0 && !isStreaming && (
             <div className="py-10">
-              <h1 className="font-display text-2xl font-bold text-neutral-900 tracking-tight text-balance">
+              <div className="flex items-center gap-2 text-xs font-medium">
+                <span className="text-[#2E2252] font-semibold">Vod Suite</span>
+                <span aria-hidden="true" className="text-[#C3CFE4]">
+                  ·
+                </span>
+                <span className="text-[#185ABD]">Microsoft Word Workspace</span>
+              </div>
+              <h1 className="mt-2 font-display text-2xl sm:text-3xl font-bold text-[#1E1935] tracking-tight text-balance">
                 What Word document can I create or edit?
               </h1>
-              <p className="mt-1.5 text-sm text-neutral-500">
-                Draft reports, redline agreements, add review comments, or upload a .docx to inspect.
+              <p className="mt-2 text-sm text-[#585470] max-w-xl leading-relaxed">
+                Draft executive briefs, apply tracked redlines, anchor review comments, or upload a
+                .docx document to inspect.
               </p>
 
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {STARTER_PROMPTS.map((item) => (
-                  <button
-                    key={item.title}
-                    type="button"
-                    onClick={() => onSendMessage(item.prompt)}
-                    className="p-4 rounded-2xl border border-[#E5E2DA] bg-white hover:bg-[#F5F3EE] text-left transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-                      <FilePlus2 className="w-4 h-4 text-[#1A73E8] shrink-0" />
-                      <span>{item.title}</span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-neutral-500 leading-relaxed line-clamp-2">
-                      {item.prompt}
-                    </p>
-                  </button>
-                ))}
+              <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {STARTER_PROMPTS.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.title}
+                      type="button"
+                      onClick={() => onSendMessage(item.prompt)}
+                      className="group p-4 rounded-xl border border-[#D9E1EF] bg-white hover:border-[#185ABD] hover:bg-[#E8F0FC]/35 text-left transition-all cursor-pointer shadow-[0_1px_2px_rgba(46,34,82,0.04)] focus-visible:outline-2 focus-visible:outline-[#185ABD]"
+                    >
+                      <div className="flex items-center gap-2.5 text-sm font-semibold text-[#1E1935] group-hover:text-[#103F91]">
+                        <span className="w-8 h-8 rounded-lg bg-[#E8F0FC] text-[#185ABD] flex items-center justify-center shrink-0">
+                          <Icon className="w-4 h-4" />
+                        </span>
+                        <span>{item.title}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-[#585470] leading-relaxed line-clamp-2">
+                        {item.prompt}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -231,7 +256,7 @@ export function ChatPane({
             if (msg.role === 'user') {
               return (
                 <div key={msg.id} className="flex flex-col items-end">
-                  <div className="max-w-xl rounded-2xl border border-[#E5E2DA] bg-white px-4 py-3 text-[15px] leading-relaxed text-neutral-900 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                  <div className="max-w-xl rounded-xl border border-[#C7D8F4] bg-[#E8F0FC]/70 px-4 py-3 text-[15px] leading-relaxed text-[#1E1935]">
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                     {msg.attachments && msg.attachments.length > 0 && (
                       <div className="mt-2.5 flex flex-wrap gap-2">
@@ -240,18 +265,18 @@ export function ChatPane({
                             key={att.id}
                             type="button"
                             onClick={() => onOpenFile(att)}
-                            className="inline-flex items-center gap-2 rounded-xl bg-[#FAF9F6] border border-[#E2DFD7] px-2.5 py-1.5 text-xs font-medium text-neutral-800 hover:border-neutral-400 cursor-pointer"
+                            className="inline-flex items-center gap-2 rounded-lg bg-white border border-[#C7D8F4] px-2.5 py-1.5 text-xs font-medium text-[#1E1935] hover:border-[#185ABD] cursor-pointer"
                           >
-                            <FileText className="w-3.5 h-3.5 text-[#1A73E8]" />
+                            <FileText className="w-3.5 h-3.5 text-[#185ABD]" />
                             <span>{att.filename}</span>
-                            <span className="text-neutral-400 font-mono-tabular">
+                            <span className="text-[#585470] font-mono-tabular">
                               {formatBytes(att.sizeBytes)}
                             </span>
                           </button>
                         ))}
                       </div>
                     )}
-                    <div className="mt-2 text-right text-[11px] text-neutral-400 font-mono-tabular">
+                    <div className="mt-2 text-right text-[11px] text-[#585470] font-mono-tabular whitespace-nowrap">
                       You · {formatClockTime(msg.createdAt)}
                     </div>
                   </div>
@@ -261,15 +286,15 @@ export function ChatPane({
 
             return (
               <article key={msg.id} className="flex items-start gap-3">
-                {/* Small circular emblem matching reference */}
+                {/* Abstract Vod Brand Emblem */}
                 <div
                   aria-hidden="true"
-                  className="w-8 h-8 rounded-full bg-[#1C1C1C] text-white flex items-center justify-center shrink-0 mt-1 shadow-xs"
+                  className="w-9 h-9 rounded-xl bg-white border border-[#D9E1EF] flex items-center justify-center shrink-0 mt-0.5 shadow-[0_1px_3px_rgba(46,34,82,0.06)]"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <VodLogo className="w-5 h-5" />
                 </div>
 
-                <div className="flex-1 min-w-0 rounded-2xl bg-[#F4F2EC] border border-[#E5E1D8] px-5 py-4">
+                <div className="flex-1 min-w-0 rounded-xl bg-white border border-[#D9E1EF] px-5 py-4 shadow-[0_1px_3px_rgba(46,34,82,0.04)]">
                   {msg.thoughtText && (
                     <ThinkingCard thoughtText={msg.thoughtText} isStreaming={false} />
                   )}
@@ -278,12 +303,12 @@ export function ChatPane({
                     <InlineToolTiles steps={msg.toolSteps} isTurnActive={false} />
                   )}
 
-                  <div className="text-[15px] leading-[1.65] text-neutral-900 space-y-2.5 [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_strong]:font-semibold [&_code]:font-mono-tabular [&_code]:text-[13px] [&_code]:bg-white [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_h1]:text-lg [&_h1]:font-bold [&_h2]:text-base [&_h2]:font-semibold">
+                  <div className="text-[15px] leading-[1.65] text-[#1E1935] space-y-2.5 [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_strong]:font-semibold [&_code]:font-mono-tabular [&_code]:text-[13px] [&_code]:bg-[#F4F6FB] [&_code]:border [&_code]:border-[#D9E1EF] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_h1]:text-lg [&_h1]:font-bold [&_h2]:text-base [&_h2]:font-semibold [&_table]:w-full [&_table]:border-collapse [&_th]:bg-[#ECEFF7] [&_th]:text-left [&_th]:px-3 [&_th]:py-2 [&_th]:text-xs [&_th]:font-semibold [&_td]:border-t [&_td]:border-[#D9E1EF] [&_td]:px-3 [&_td]:py-2 [&_td]:text-xs">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                   </div>
 
                   {msg.error && (
-                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs text-red-700">
+                    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-xs text-red-700">
                       {msg.error}
                     </div>
                   )}
@@ -297,19 +322,19 @@ export function ChatPane({
                     />
                   )}
 
-                  <div className="mt-3.5 pt-2.5 border-t border-[#E3DFD6] flex items-center justify-between gap-4 text-[11px] text-neutral-500">
-                    <span className="font-mono-tabular">
+                  <div className="mt-4 pt-2.5 border-t border-[#ECEFF7] flex items-center justify-between gap-3 text-[11px] text-[#585470]">
+                    <span className="font-mono-tabular whitespace-nowrap">
                       Vod Word · {formatClockTime(msg.createdAt)}
                     </span>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleCopy(msg.id, msg.content)}
-                        className="inline-flex items-center gap-1 hover:text-neutral-900 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 hover:text-[#185ABD] transition-colors cursor-pointer whitespace-nowrap"
                       >
                         {copiedId === msg.id ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <Check className="w-3.5 h-3.5 text-[#16A34A]" />
                         ) : (
                           <Copy className="w-3.5 h-3.5" />
                         )}
@@ -320,7 +345,7 @@ export function ChatPane({
                         type="button"
                         disabled={isStreaming}
                         onClick={() => onRegenerateMessage(msg.id)}
-                        className="inline-flex items-center gap-1 hover:text-neutral-900 transition-colors cursor-pointer disabled:opacity-40"
+                        className="inline-flex items-center gap-1 hover:text-[#185ABD] transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Regenerate</span>
@@ -336,12 +361,12 @@ export function ChatPane({
             <div className="flex items-start gap-3" aria-live="polite">
               <div
                 aria-hidden="true"
-                className="w-8 h-8 rounded-full bg-[#1C1C1C] text-white flex items-center justify-center shrink-0 mt-1"
+                className="w-9 h-9 rounded-xl bg-white border border-[#D9E1EF] flex items-center justify-center shrink-0 mt-0.5"
               >
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin text-[#185ABD]" />
               </div>
 
-              <div className="flex-1 min-w-0 rounded-2xl bg-[#F4F2EC] border border-[#E5E1D8] px-5 py-4">
+              <div className="flex-1 min-w-0 rounded-xl bg-white border border-[#D9E1EF] px-5 py-4 shadow-[0_1px_3px_rgba(46,34,82,0.04)]">
                 <ThinkingCard
                   thoughtText={liveThoughtText}
                   isStreaming={!liveText && liveSteps.length === 0}
@@ -350,13 +375,13 @@ export function ChatPane({
                 <InlineToolTiles steps={liveSteps} isTurnActive={true} />
 
                 {liveText ? (
-                  <div className="text-[15px] leading-[1.65] text-neutral-900 space-y-2.5 [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_strong]:font-semibold">
+                  <div className="text-[15px] leading-[1.65] text-[#1E1935] space-y-2.5 [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_strong]:font-semibold">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{liveText}</ReactMarkdown>
                   </div>
                 ) : (
                   !liveThoughtText &&
                   liveSteps.length === 0 && (
-                    <div className="text-xs text-neutral-500">Thinking...</div>
+                    <div className="text-xs text-[#585470]">Thinking...</div>
                   )
                 )}
               </div>
@@ -371,14 +396,14 @@ export function ChatPane({
           type="button"
           onClick={() => scrollToBottom(true)}
           aria-label="Scroll to latest message"
-          className="absolute right-6 bottom-28 z-20 w-10 h-10 rounded-full bg-white border border-[#E2DFD7] shadow-md flex items-center justify-center text-neutral-700 hover:text-neutral-900 hover:bg-[#F5F3EE] transition-colors cursor-pointer"
+          className="absolute right-6 bottom-28 z-20 w-10 h-10 rounded-full bg-white border border-[#D9E1EF] shadow-[0_4px_14px_rgba(46,34,82,0.12)] flex items-center justify-center text-[#2E2252] hover:text-[#185ABD] hover:border-[#185ABD] transition-colors cursor-pointer"
         >
           <ArrowDown className="w-4 h-4" />
         </button>
       )}
 
-      {/* Minimal ChatGPT-style Composer */}
-      <div className="bg-[#FAF9F6] px-4 sm:px-6 pb-4 pt-2 shrink-0">
+      {/* Branded Enterprise Composer */}
+      <div className="bg-[#F4F6FB] px-4 sm:px-6 pb-4 pt-2 shrink-0">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto relative">
           <AttachmentPopover
             isOpen={isAttachmentMenuOpen}
@@ -400,24 +425,24 @@ export function ChatPane({
           />
 
           {pendingFileAttachment && (
-            <div className="mb-2 inline-flex items-center gap-2 rounded-xl border border-[#DFDBD2] bg-white px-3 py-1.5 text-xs text-neutral-800 shadow-xs">
-              <FileText className="w-3.5 h-3.5 text-[#1A73E8]" />
+            <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#C7D8F4] bg-white px-3 py-1.5 text-xs text-[#1E1935] shadow-xs">
+              <WordDocIcon className="w-5 h-5 shrink-0" />
               <span className="font-medium">{pendingFileAttachment.filename}</span>
-              <span className="text-neutral-400 font-mono-tabular">
+              <span className="text-[#585470] font-mono-tabular">
                 {formatBytes(pendingFileAttachment.sizeBytes)}
               </span>
               <button
                 type="button"
                 onClick={onClearPendingFile}
                 aria-label={`Remove ${pendingFileAttachment.filename}`}
-                className="ml-0.5 text-neutral-400 hover:text-neutral-900 cursor-pointer"
+                className="ml-0.5 text-[#585470] hover:text-[#2E2252] cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
-          <div className="rounded-2xl border border-[#DFDBD2] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)] focus-within:border-neutral-500 transition-colors flex items-end gap-2 px-3 py-2.5">
+          <div className="rounded-xl border border-[#C3CFE4] bg-white shadow-[0_2px_10px_rgba(46,34,82,0.05)] focus-within:border-[#185ABD] focus-within:ring-2 focus-within:ring-[#185ABD]/15 transition-all flex items-end gap-2 px-3 py-2.5">
             {/* Icon-only attachment button */}
             <button
               type="button"
@@ -426,10 +451,10 @@ export function ChatPane({
               aria-expanded={isAttachmentMenuOpen}
               disabled={isStreaming}
               onClick={() => setIsAttachmentMenuOpen((v) => !v)}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer shrink-0 disabled:opacity-50 ${
+              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer shrink-0 disabled:opacity-50 ${
                 isAttachmentMenuOpen
-                  ? 'bg-[#F4F2EC] text-neutral-900'
-                  : 'text-neutral-500 hover:text-neutral-900 hover:bg-[#F4F2EC]'
+                  ? 'bg-[#E8F0FC] text-[#185ABD]'
+                  : 'text-[#585470] hover:text-[#185ABD] hover:bg-[#E8F0FC]/70'
               }`}
             >
               <Paperclip className="w-4 h-4" />
@@ -445,15 +470,15 @@ export function ChatPane({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask Vod Word to create, inspect, or edit a .docx..."
-              className="flex-1 resize-none bg-transparent py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none max-h-36"
+              placeholder="Message Vod Word (.docx)..."
+              className="flex-1 resize-none bg-transparent py-2 text-sm text-[#1E1935] placeholder:text-[#706B88] focus:outline-none max-h-36"
             />
 
             <button
               type="submit"
               aria-label="Send message"
               disabled={!input.trim() || isStreaming}
-              className="w-9 h-9 rounded-xl bg-[#191919] hover:bg-[#333333] disabled:bg-neutral-200 disabled:text-neutral-400 text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              className="w-9 h-9 rounded-lg bg-[#185ABD] hover:bg-[#103F91] disabled:bg-[#E4E9F2] disabled:text-[#8E98AE] text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
             >
               {isStreaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

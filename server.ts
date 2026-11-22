@@ -2,13 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createServer as createViteServer } from 'vite';
 import { inspectDocxBuffer } from './server/docxEngine.ts';
 import { isValidEntityId, sanitizeDocxFilename } from './server/docxUtils.ts';
 import { runAutonomousWordAgent } from './server/geminiAgent.ts';
 import { workspaceStore } from './server/store.ts';
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 
 async function startServer() {
@@ -49,7 +48,9 @@ async function startServer() {
 
   app.post('/api/sessions', (req, res) => {
     const title = typeof req.body?.title === 'string' ? req.body.title : 'New Chat';
-    const session = workspaceStore.createSession(title);
+    const requestedId =
+      typeof req.body?.id === 'string' && isValidEntityId(req.body.id) ? req.body.id : undefined;
+    const session = workspaceStore.createSession(title, requestedId);
     res.status(201).json({ session });
   });
 
@@ -88,12 +89,19 @@ async function startServer() {
   app.post('/api/files/upload', async (req, res) => {
     try {
       const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId : '';
+      const requestedFileId =
+        typeof req.body?.fileId === 'string' && isValidEntityId(req.body.fileId)
+          ? req.body.fileId
+          : undefined;
       const rawFilename = typeof req.body?.filename === 'string' ? req.body.filename : 'Uploaded.docx';
       const base64Data = typeof req.body?.base64Data === 'string' ? req.body.base64Data : '';
 
-      if (!isValidEntityId(sessionId) || !workspaceStore.getSession(sessionId)) {
-        res.status(404).json({ error: 'Target session not found.' });
+      if (!isValidEntityId(sessionId)) {
+        res.status(400).json({ error: 'Invalid target session ID.' });
         return;
+      }
+      if (!workspaceStore.getSession(sessionId)) {
+        workspaceStore.createSession('New Chat', sessionId);
       }
 
       const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
@@ -133,6 +141,7 @@ async function startServer() {
         wordCount: inspection.wordCount,
         pageCountEstimate: Math.max(1, Math.ceil(inspection.wordCount / 380)),
         source: 'uploaded',
+        requestedId: requestedFileId,
       });
 
       res.status(201).json({ file: saved, inspection: { ...inspection, file: saved } });
@@ -142,7 +151,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/files/:fileId/download', (req, res) => {
+  app.get('/api/files/:fileId/download', async (req, res) => {
     try {
       const { fileId } = req.params;
       if (!isValidEntityId(fileId)) {
@@ -154,7 +163,7 @@ async function startServer() {
         res.status(404).json({ error: 'File not found.' });
         return;
       }
-      const buffer = workspaceStore.getFileBuffer(fileId);
+      const buffer = await workspaceStore.getFileBufferAsync(fileId);
       const inline = req.query.inline === '1';
       res.setHeader(
         'Content-Type',
@@ -164,6 +173,8 @@ async function startServer() {
         'Content-Disposition',
         `${inline ? 'inline' : 'attachment'}; filename="${meta.filename}"`,
       );
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('ETag', `"${fileId}"`);
       res.send(buffer);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'File read error.';
@@ -183,8 +194,9 @@ async function startServer() {
         res.status(404).json({ error: 'File not found.' });
         return;
       }
-      const buffer = workspaceStore.getFileBuffer(fileId);
+      const buffer = await workspaceStore.getFileBufferAsync(fileId);
       const inspection = await inspectDocxBuffer(buffer, meta);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       res.json(inspection);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to inspect .docx file.';
@@ -206,9 +218,12 @@ async function startServer() {
         ? req.body.regenerateAssistantId
         : undefined;
 
-    if (!isValidEntityId(sessionId) || !workspaceStore.getSession(sessionId)) {
-      res.status(404).json({ error: 'Session not found.' });
+    if (!isValidEntityId(sessionId)) {
+      res.status(400).json({ error: 'Invalid session ID.' });
       return;
+    }
+    if (!workspaceStore.getSession(sessionId)) {
+      workspaceStore.createSession('New Chat', sessionId);
     }
 
     let prompt = promptInput;
@@ -287,7 +302,11 @@ async function startServer() {
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  const isProduction =
+    process.env.NODE_ENV === 'production' || process.env.npm_lifecycle_event === 'start';
+
+  if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -306,9 +325,16 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Vod Word server running on http://0.0.0.0:${PORT}`);
   });
+
+  const handleShutdown = async () => {
+    await workspaceStore.flush();
+    server.close(() => process.exit(0));
+  };
+  process.on('SIGTERM', () => void handleShutdown());
+  process.on('SIGINT', () => void handleShutdown());
 }
 
 startServer().catch((err) => {

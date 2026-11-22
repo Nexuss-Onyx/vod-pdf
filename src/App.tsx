@@ -11,6 +11,19 @@ import type {
   DocxAttachment,
   WorkspaceSnapshot,
 } from './types/vod';
+import {
+  createClientSessionId,
+  deleteLocalSessionData,
+  flushPendingSyncOps,
+  loadLocalMeta,
+  loadLocalSessionMessages,
+  loadPendingSyncOps,
+  prefetchFileToLocalCache,
+  recordSyncOp,
+  saveLocalMeta,
+  saveLocalSessionMessages,
+} from './utils/localWorkspaceDb';
+import { mergeSessionMessages, mergeWorkspaceSnapshots } from './utils/syncMerge';
 
 const SESSION_STORAGE_KEY = 'vod_word_active_session';
 
@@ -37,120 +50,274 @@ export default function App() {
 
   const activeSessionRef = useRef(activeSessionId);
   activeSessionRef.current = activeSessionId;
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const allFilesRef = useRef(allFiles);
+  allFilesRef.current = allFiles;
 
-  const loadSessionDetail = useCallback(async (sessionId: string) => {
+  const syncSessionDetailFromCloud = useCallback(async (sessionId: string) => {
     if (!sessionId) return;
-    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
-    if (!res.ok) return;
-    const data = (await res.json()) as {
-      session: ChatSession;
-      messages: ChatMessage[];
-      files: DocxAttachment[];
-    };
-    setMessages(data.messages);
-    setSessionFiles(data.files);
     try {
-      localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        session: ChatSession;
+        messages: ChatMessage[];
+        files: DocxAttachment[];
+      };
+
+      const localMsgs = (await loadLocalSessionMessages(sessionId)) || [];
+      const merged = mergeSessionMessages(localMsgs, data.messages);
+      await saveLocalSessionMessages(sessionId, merged);
+
+      if (activeSessionRef.current === sessionId) {
+        setMessages(merged);
+        setSessionFiles(data.files);
+      }
+
+      // Warm local blob cache in background for recent session attachments
+      for (const f of data.files.slice(0, 3)) {
+        void prefetchFileToLocalCache(f.id);
+      }
     } catch {
-      // Ignore storage failures
+      // Offline / transient network errors keep local-first data intact
     }
   }, []);
 
-  const loadWorkspace = useCallback(async () => {
-    const res = await fetch('/api/workspace');
-    if (!res.ok) return;
-    const snap = (await res.json()) as WorkspaceSnapshot;
-    setSessions(snap.sessions);
-    setAllFiles(snap.files);
-
-    const savedId = (() => {
+  const loadSessionLocalFirst = useCallback(
+    async (sessionId: string, filesSource?: DocxAttachment[]) => {
+      if (!sessionId) return;
+      const localMsgs = await loadLocalSessionMessages(sessionId);
+      const sourceFiles = filesSource ?? allFilesRef.current;
+      const localFiles = sourceFiles.filter((f) => f.sessionId === sessionId);
+      if (localMsgs !== null) {
+        setMessages(localMsgs);
+        setSessionFiles(localFiles);
+      }
       try {
-        return localStorage.getItem(SESSION_STORAGE_KEY) || '';
+        localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
       } catch {
-        return '';
+        // Ignore storage failures
+      }
+      void syncSessionDetailFromCloud(sessionId);
+    },
+    [syncSessionDetailFromCloud],
+  );
+
+  const syncWorkspaceWithCloud = useCallback(async () => {
+    try {
+      await flushPendingSyncOps();
+      const res = await fetch('/api/workspace');
+      if (!res.ok) return;
+      const serverSnap = (await res.json()) as WorkspaceSnapshot;
+      const pendingOps = await loadPendingSyncOps();
+      const localMeta = await loadLocalMeta();
+      const localSnap: WorkspaceSnapshot = {
+        sessions: localMeta?.sessions ?? sessionsRef.current,
+        files: localMeta?.files ?? allFilesRef.current,
+      };
+      const mergedSnap = mergeWorkspaceSnapshots(localSnap, serverSnap, pendingOps);
+
+      setSessions(mergedSnap.sessions);
+      setAllFiles(mergedSnap.files);
+
+      const savedId = (() => {
+        try {
+          return localStorage.getItem(SESSION_STORAGE_KEY) || localMeta?.activeSessionId || '';
+        } catch {
+          return localMeta?.activeSessionId || '';
+        }
+      })();
+
+      const currentId = activeSessionRef.current;
+      const targetSession =
+        mergedSnap.sessions.find((s) => s.id === currentId) ||
+        mergedSnap.sessions.find((s) => s.id === savedId) ||
+        mergedSnap.sessions[0];
+
+      await saveLocalMeta({
+        sessions: mergedSnap.sessions,
+        files: mergedSnap.files,
+        activeSessionId: targetSession?.id || currentId,
+      });
+
+      if (targetSession) {
+        if (targetSession.id !== currentId) {
+          setActiveSessionId(targetSession.id);
+        }
+        await syncSessionDetailFromCloud(targetSession.id);
+      }
+    } catch {
+      // Offline / transient network errors keep local-first state active
+    } finally {
+      setIsInitializing(false);
+    }
+  }, [syncSessionDetailFromCloud]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // 1. Instant local-first paint from IndexedDB on disk
+      const localMeta = await loadLocalMeta();
+      if (!cancelled && localMeta && localMeta.sessions.length > 0) {
+        setSessions(localMeta.sessions);
+        setAllFiles(localMeta.files);
+
+        const savedId = (() => {
+          try {
+            return localStorage.getItem(SESSION_STORAGE_KEY) || localMeta.activeSessionId || '';
+          } catch {
+            return localMeta.activeSessionId || '';
+          }
+        })();
+
+        const target =
+          localMeta.sessions.find((s) => s.id === savedId) || localMeta.sessions[0];
+
+        if (target) {
+          setActiveSessionId(target.id);
+          const localMsgs = await loadLocalSessionMessages(target.id);
+          if (!cancelled && localMsgs) {
+            setMessages(localMsgs);
+            setSessionFiles(localMeta.files.filter((f) => f.sessionId === target.id));
+          }
+        }
+        setIsInitializing(false);
+      }
+
+      // 2. Background cloud sync
+      if (!cancelled) {
+        await syncWorkspaceWithCloud();
       }
     })();
 
-    const currentId = activeSessionRef.current;
-    const targetSession =
-      snap.sessions.find((s) => s.id === currentId) ||
-      snap.sessions.find((s) => s.id === savedId) ||
-      snap.sessions[0];
-
-    if (targetSession) {
-      if (targetSession.id !== currentId) {
-        setActiveSessionId(targetSession.id);
-      }
-      await loadSessionDetail(targetSession.id);
-    }
-    setIsInitializing(false);
-  }, [loadSessionDetail]);
-
-  useEffect(() => {
-    loadWorkspace();
-  }, [loadWorkspace]);
+    return () => {
+      cancelled = true;
+    };
+  }, [syncWorkspaceWithCloud]);
 
   useEffect(() => {
     const es = new EventSource('/api/events');
     es.addEventListener('workspace_updated', () => {
-      loadWorkspace();
+      void syncWorkspaceWithCloud();
     });
+    const onOnline = () => {
+      void syncWorkspaceWithCloud();
+    };
+    window.addEventListener('online', onOnline);
     return () => {
       es.close();
+      window.removeEventListener('online', onOnline);
     };
-  }, [loadWorkspace]);
+  }, [syncWorkspaceWithCloud]);
 
   const handleNewChat = async () => {
-    const res = await fetch('/api/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'New Chat' }),
-    });
-    if (!res.ok) return;
-    const data = (await res.json()) as { session: ChatSession };
-    setSessions((prev) => [data.session, ...prev]);
-    setActiveSessionId(data.session.id);
+    const now = new Date().toISOString();
+    const newSession: ChatSession = {
+      id: createClientSessionId(),
+      title: 'New Chat',
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+      fileCount: 0,
+    };
+
+    const nextSessions = [newSession, ...sessionsRef.current];
+    setSessions(nextSessions);
+    setActiveSessionId(newSession.id);
     setMessages([]);
     setSessionFiles([]);
     setPendingFileAttachment(null);
     setViewerFile(null);
+
     try {
-      localStorage.setItem(SESSION_STORAGE_KEY, data.session.id);
+      localStorage.setItem(SESSION_STORAGE_KEY, newSession.id);
     } catch {
       // Ignore storage errors
     }
+
+    // Persist locally first (0ms UI) and sync in background
+    await Promise.all([
+      saveLocalMeta({
+        sessions: nextSessions,
+        files: allFilesRef.current,
+        activeSessionId: newSession.id,
+      }),
+      saveLocalSessionMessages(newSession.id, []),
+      recordSyncOp({
+        type: 'create_session',
+        sessionId: newSession.id,
+        title: newSession.title,
+        createdAt: now,
+      }),
+    ]);
+    void flushPendingSyncOps();
   };
 
   const handleSelectSession = async (sessionId: string) => {
     setActiveSessionId(sessionId);
     setPendingFileAttachment(null);
     setIsSidebarOpen(false);
-    await loadSessionDetail(sessionId);
+    void saveLocalMeta({
+      sessions: sessionsRef.current,
+      files: allFilesRef.current,
+      activeSessionId: sessionId,
+    });
+    await loadSessionLocalFirst(sessionId);
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) return;
-    const remaining = sessions.filter((s) => s.id !== sessionId);
+    const remaining = sessionsRef.current.filter((s) => s.id !== sessionId);
+    const removedFileIds = allFilesRef.current
+      .filter((f) => f.sessionId === sessionId)
+      .map((f) => f.id);
+    const nextFiles = allFilesRef.current.filter((f) => f.sessionId !== sessionId);
+
     setSessions(remaining);
-    if (activeSessionId === sessionId && remaining[0]) {
-      setActiveSessionId(remaining[0].id);
-      await loadSessionDetail(remaining[0].id);
+    setAllFiles(nextFiles);
+
+    const nextActiveId =
+      activeSessionId === sessionId ? (remaining[0]?.id ?? '') : activeSessionId;
+    if (activeSessionId === sessionId) {
+      setActiveSessionId(nextActiveId);
+      if (nextActiveId) {
+        await loadSessionLocalFirst(nextActiveId, nextFiles);
+      } else {
+        setMessages([]);
+        setSessionFiles([]);
+      }
     }
     if (viewerFile && viewerFile.sessionId === sessionId) {
       setViewerFile(null);
     }
+
+    await Promise.all([
+      saveLocalMeta({
+        sessions: remaining,
+        files: nextFiles,
+        activeSessionId: nextActiveId,
+      }),
+      deleteLocalSessionData(sessionId, removedFileIds),
+      recordSyncOp({
+        type: 'delete_session',
+        sessionId,
+        createdAt: new Date().toISOString(),
+      }),
+    ]);
+    void flushPendingSyncOps();
   };
 
   const streamChatRequest = async (bodyPayload: Record<string, unknown>) => {
+    const targetSessionId = String(bodyPayload.sessionId || activeSessionRef.current);
     setIsStreaming(true);
     setLiveThoughtText('');
     setLiveSteps([]);
     setLiveText('');
 
     try {
+      // Ensure session exists on server before streaming if created optimistically offline
+      await flushPendingSyncOps();
+
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,7 +356,12 @@ export default function App() {
 
           const payload = JSON.parse(dataLine);
           if (eventType === 'user_message') {
-            setMessages((prev) => [...prev, payload as ChatMessage]);
+            const userMsg = payload as ChatMessage;
+            setMessages((prev) => {
+              const next = [...prev, userMsg];
+              void saveLocalSessionMessages(targetSessionId, next);
+              return next;
+            });
           } else if (eventType === 'thought_delta') {
             setLiveThoughtText((prev) => prev + String(payload.delta || ''));
           } else if (eventType === 'tool_update') {
@@ -202,31 +374,48 @@ export default function App() {
             setLiveText((prev) => prev + String(payload.delta || ''));
           } else if (eventType === 'done') {
             const assistantMsg = payload.message as ChatMessage;
-            setMessages((prev) => [...prev, assistantMsg]);
+            setMessages((prev) => {
+              const next = [...prev, assistantMsg];
+              void saveLocalSessionMessages(targetSessionId, next);
+              return next;
+            });
             if (assistantMsg.attachments && assistantMsg.attachments.length > 0) {
-              setViewerFile(assistantMsg.attachments[assistantMsg.attachments.length - 1]);
+              const latest = assistantMsg.attachments[assistantMsg.attachments.length - 1];
+              setViewerFile(latest);
+              for (const att of assistantMsg.attachments) {
+                void prefetchFileToLocalCache(att.id);
+              }
             }
-            await loadWorkspace();
+            void syncWorkspaceWithCloud();
           } else if (eventType === 'error') {
             if (payload.message) {
-              setMessages((prev) => [...prev, payload.message as ChatMessage]);
+              const errMsg = payload.message as ChatMessage;
+              setMessages((prev) => {
+                const next = [...prev, errMsg];
+                void saveLocalSessionMessages(targetSessionId, next);
+                return next;
+              });
             }
           }
         }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Streaming connection failed.';
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `err_${Date.now()}`,
-          sessionId: activeSessionId,
-          role: 'assistant',
-          content: `Unable to complete the request: ${msg}`,
-          createdAt: new Date().toISOString(),
-          error: msg,
-        },
-      ]);
+      setMessages((prev) => {
+        const next = [
+          ...prev,
+          {
+            id: `err_${Date.now()}`,
+            sessionId: targetSessionId,
+            role: 'assistant' as const,
+            content: `Unable to complete the request: ${msg}`,
+            createdAt: new Date().toISOString(),
+            error: msg,
+          },
+        ];
+        void saveLocalSessionMessages(targetSessionId, next);
+        return next;
+      });
     } finally {
       setIsStreaming(false);
       setLiveThoughtText('');
@@ -248,7 +437,11 @@ export default function App() {
 
   const handleRegenerateMessage = async (assistantMessageId: string) => {
     if (!activeSessionId || isStreaming) return;
-    setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId));
+    setMessages((prev) => {
+      const next = prev.filter((m) => m.id !== assistantMessageId);
+      void saveLocalSessionMessages(activeSessionId, next);
+      return next;
+    });
     await streamChatRequest({
       sessionId: activeSessionId,
       regenerateAssistantId: assistantMessageId,
@@ -258,7 +451,10 @@ export default function App() {
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#FAF9F6] text-neutral-900">
+    <div
+      data-vod-app="word"
+      className="h-screen w-screen overflow-hidden flex flex-col bg-[#F4F6FB] text-[#1E1935]"
+    >
       <TopBar
         onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
         onNewChat={handleNewChat}
@@ -290,8 +486,15 @@ export default function App() {
             onSelectPendingFile={(file) => setPendingFileAttachment(file)}
             onAttachUploadedFile={(file) => {
               setPendingFileAttachment(file);
-              setSessionFiles((prev) => [file, ...prev]);
-              setAllFiles((prev) => [file, ...prev]);
+              const nextSessionFiles = [file, ...sessionFiles];
+              const nextAllFiles = [file, ...allFiles];
+              setSessionFiles(nextSessionFiles);
+              setAllFiles(nextAllFiles);
+              void saveLocalMeta({
+                sessions: sessionsRef.current,
+                files: nextAllFiles,
+                activeSessionId,
+              });
             }}
             onSendMessage={handleSendMessage}
             onRegenerateMessage={handleRegenerateMessage}

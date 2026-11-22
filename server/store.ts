@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { Response } from 'express';
 import type {
@@ -11,70 +12,247 @@ import type {
 import { createDocxFromSpec } from './docxEngine.ts';
 import { isValidEntityId, sanitizeDocxFilename } from './docxUtils.ts';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const FILES_DIR = path.resolve(DATA_DIR, 'files');
-const STATE_PATH = path.resolve(DATA_DIR, 'workspace.json');
+export function resolveWritableDataDir(preferredOverride?: string): string {
+  const candidates = [
+    preferredOverride,
+    process.env.VOD_DATA_DIR,
+    path.resolve(process.cwd(), 'data'),
+    path.resolve(os.tmpdir(), 'vod-word-data'),
+  ].filter((v): v is string => Boolean(v && v.trim()));
 
-interface PersistedWorkspace {
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      return dir;
+    } catch {
+      // Try next writable location
+    }
+  }
+  return path.resolve(os.tmpdir(), 'vod-word-data');
+}
+
+interface PersistedIndex {
+  version: 2;
   sessions: ChatSession[];
-  messages: ChatMessage[];
   files: DocxAttachment[];
 }
 
-function ensureStorageDirs(): void {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.mkdirSync(FILES_DIR, { recursive: true });
+interface LegacyWorkspace {
+  sessions?: ChatSession[];
+  messages?: ChatMessage[];
+  files?: DocxAttachment[];
 }
 
-function resolveSafeFilePath(fileId: string): string {
-  if (!isValidEntityId(fileId)) {
-    throw new Error('Invalid file identifier.');
-  }
-  const resolved = path.resolve(FILES_DIR, `${fileId}.docx`);
-  if (!resolved.startsWith(FILES_DIR + path.sep)) {
-    throw new Error('Path traversal rejected.');
-  }
-  return resolved;
+async function atomicWriteText(targetPath: string, content: string): Promise<void> {
+  const tmpPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.promises.writeFile(tmpPath, content, 'utf8');
+  await fs.promises.rename(tmpPath, targetPath);
 }
 
-class WorkspaceStore {
-  private state: PersistedWorkspace = {
-    sessions: [],
-    messages: [],
-    files: [],
-  };
+export class WorkspaceStore {
+  private readonly dataDir: string;
+  private readonly filesDir: string;
+  private readonly sessionsDir: string;
+  private readonly indexPath: string;
+  private readonly legacyStatePath: string;
+
+  private sessions: ChatSession[] = [];
+  private files: DocxAttachment[] = [];
+  private messagesBySession = new Map<string, ChatMessage[]>();
+
   private sseClients = new Set<Response>();
   private initialized = false;
 
+  // Lightweight background disk write scheduling (coalesces bursts, never blocks HTTP)
+  private indexDirty = false;
+  private dirtySessions = new Set<string>();
+  private deletedSessionIds = new Set<string>();
+  private flushTimer: NodeJS.Timeout | null = null;
+  private activeFlushPromise: Promise<void> | null = null;
+
+  constructor(customDataDir?: string) {
+    this.dataDir = resolveWritableDataDir(customDataDir);
+    this.filesDir = path.resolve(this.dataDir, 'files');
+    this.sessionsDir = path.resolve(this.dataDir, 'sessions');
+    this.indexPath = path.resolve(this.dataDir, 'index.json');
+    this.legacyStatePath = path.resolve(this.dataDir, 'workspace.json');
+  }
+
+  getDataDir(): string {
+    return this.dataDir;
+  }
+
+  private ensureStorageDirs(): void {
+    fs.mkdirSync(this.dataDir, { recursive: true });
+    fs.mkdirSync(this.filesDir, { recursive: true });
+    fs.mkdirSync(this.sessionsDir, { recursive: true });
+  }
+
+  private resolveSafeFilePath(fileId: string): string {
+    if (!isValidEntityId(fileId)) {
+      throw new Error('Invalid file identifier.');
+    }
+    const resolved = path.resolve(this.filesDir, `${fileId}.docx`);
+    if (!resolved.startsWith(this.filesDir + path.sep)) {
+      throw new Error('Path traversal rejected.');
+    }
+    return resolved;
+  }
+
+  private resolveSafeSessionPath(sessionId: string): string {
+    if (!isValidEntityId(sessionId)) {
+      throw new Error('Invalid session identifier.');
+    }
+    const resolved = path.resolve(this.sessionsDir, `${sessionId}.json`);
+    if (!resolved.startsWith(this.sessionsDir + path.sep)) {
+      throw new Error('Path traversal rejected.');
+    }
+    return resolved;
+  }
+
   async init(): Promise<void> {
     if (this.initialized) return;
-    ensureStorageDirs();
+    this.ensureStorageDirs();
 
-    if (fs.existsSync(STATE_PATH)) {
+    if (fs.existsSync(this.indexPath)) {
       try {
-        const raw = fs.readFileSync(STATE_PATH, 'utf8');
-        const parsed = JSON.parse(raw) as Partial<PersistedWorkspace>;
-        this.state = {
-          sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-          messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-          files: Array.isArray(parsed.files) ? parsed.files : [],
-        };
+        const raw = await fs.promises.readFile(this.indexPath, 'utf8');
+        const parsed = JSON.parse(raw) as Partial<PersistedIndex>;
+        this.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+        this.files = Array.isArray(parsed.files) ? parsed.files : [];
       } catch {
-        this.state = { sessions: [], messages: [], files: [] };
+        this.sessions = [];
+        this.files = [];
+      }
+    } else if (fs.existsSync(this.legacyStatePath)) {
+      // Seamless migration from monolithic workspace.json -> partitioned index.json + sessions/<id>.json
+      try {
+        const raw = await fs.promises.readFile(this.legacyStatePath, 'utf8');
+        const legacy = JSON.parse(raw) as LegacyWorkspace;
+        this.sessions = Array.isArray(legacy.sessions) ? legacy.sessions : [];
+        this.files = Array.isArray(legacy.files) ? legacy.files : [];
+        const legacyMsgs = Array.isArray(legacy.messages) ? legacy.messages : [];
+        for (const msg of legacyMsgs) {
+          const list = this.messagesBySession.get(msg.sessionId) ?? [];
+          list.push(msg);
+          this.messagesBySession.set(msg.sessionId, list);
+        }
+        this.indexDirty = true;
+        for (const s of this.sessions) {
+          this.dirtySessions.add(s.id);
+        }
+        await this.flush();
+      } catch {
+        this.sessions = [];
+        this.files = [];
       }
     }
 
-    if (this.state.sessions.length === 0) {
+    if (this.sessions.length === 0) {
       await this.seedInitialWorkspace();
     }
     this.initialized = true;
   }
 
-  private persist(): void {
-    ensureStorageDirs();
-    const tmpPath = `${STATE_PATH}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(this.state, null, 2), 'utf8');
-    fs.renameSync(tmpPath, STATE_PATH);
+  private schedulePersist(options: { index?: boolean; sessionId?: string; deleteSessionId?: string }): void {
+    if (options.index) this.indexDirty = true;
+    if (options.sessionId) {
+      this.deletedSessionIds.delete(options.sessionId);
+      this.dirtySessions.add(options.sessionId);
+    }
+    if (options.deleteSessionId) {
+      this.dirtySessions.delete(options.deleteSessionId);
+      this.deletedSessionIds.add(options.deleteSessionId);
+    }
+
+    if (this.flushTimer) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flush();
+    }, 30);
+  }
+
+  async flush(): Promise<void> {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    if (this.activeFlushPromise) {
+      await this.activeFlushPromise;
+    }
+
+    const doFlush = async () => {
+      this.ensureStorageDirs();
+      const tasks: Promise<void>[] = [];
+
+      if (this.indexDirty) {
+        this.indexDirty = false;
+        const payload: PersistedIndex = {
+          version: 2,
+          sessions: this.sessions,
+          files: this.files,
+        };
+        tasks.push(atomicWriteText(this.indexPath, JSON.stringify(payload)));
+      }
+
+      const sessionIds = Array.from(this.dirtySessions);
+      this.dirtySessions.clear();
+      for (const sid of sessionIds) {
+        const msgs = this.messagesBySession.get(sid) ?? [];
+        try {
+          const target = this.resolveSafeSessionPath(sid);
+          tasks.push(atomicWriteText(target, JSON.stringify({ sessionId: sid, messages: msgs })));
+        } catch {
+          // Ignore invalid IDs
+        }
+      }
+
+      const toDelete = Array.from(this.deletedSessionIds);
+      this.deletedSessionIds.clear();
+      for (const sid of toDelete) {
+        try {
+          const target = this.resolveSafeSessionPath(sid);
+          tasks.push(
+            fs.promises.unlink(target).catch(() => {
+              // File may not exist on disk yet
+            }),
+          );
+        } catch {
+          // Ignore invalid IDs
+        }
+      }
+
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
+    };
+
+    this.activeFlushPromise = doFlush().finally(() => {
+      this.activeFlushPromise = null;
+    });
+    await this.activeFlushPromise;
+  }
+
+  private ensureSessionMessagesLoaded(sessionId: string): ChatMessage[] {
+    const cached = this.messagesBySession.get(sessionId);
+    if (cached) return cached;
+
+    try {
+      const target = this.resolveSafeSessionPath(sessionId);
+      if (fs.existsSync(target)) {
+        const raw = fs.readFileSync(target, 'utf8');
+        const parsed = JSON.parse(raw) as { messages?: ChatMessage[] };
+        const msgs = Array.isArray(parsed.messages) ? parsed.messages : [];
+        this.messagesBySession.set(sessionId, msgs);
+        return msgs;
+      }
+    } catch {
+      // Fallback to empty message list
+    }
+    const empty: ChatMessage[] = [];
+    this.messagesBySession.set(sessionId, empty);
+    return empty;
   }
 
   private async seedInitialWorkspace(): Promise<void> {
@@ -125,7 +303,7 @@ class WorkspaceStore {
         },
       ],
     });
-    fs.writeFileSync(resolveSafeFilePath(fileId1), doc1.buffer);
+    fs.writeFileSync(this.resolveSafeFilePath(fileId1), doc1.buffer);
 
     const doc2 = await createDocxFromSpec({
       filename: 'Vendor_MSA_Draft.docx',
@@ -145,7 +323,7 @@ class WorkspaceStore {
         },
       ],
     });
-    fs.writeFileSync(resolveSafeFilePath(fileId2), doc2.buffer);
+    fs.writeFileSync(this.resolveSafeFilePath(fileId2), doc2.buffer);
 
     const doc3 = await createDocxFromSpec({
       filename: 'Incident_Response_SOP.docx',
@@ -164,7 +342,7 @@ class WorkspaceStore {
         },
       ],
     });
-    fs.writeFileSync(resolveSafeFilePath(fileId3), doc3.buffer);
+    fs.writeFileSync(this.resolveSafeFilePath(fileId3), doc3.buffer);
 
     const att1: DocxAttachment = {
       id: fileId1,
@@ -215,7 +393,8 @@ class WorkspaceStore {
       id: 'msg_seed_1',
       sessionId,
       role: 'user',
-      content: 'Prepare a clean Q4 Operations & Budget Review Word document with an executive callout, KPI comparison table, and priority action items.',
+      content:
+        'Prepare a clean Q4 Operations & Budget Review Word document with an executive callout, KPI comparison table, and priority action items.',
       createdAt: todayIso,
     };
 
@@ -249,12 +428,12 @@ class WorkspaceStore {
       fileCount: 1,
     };
 
-    this.state = {
-      sessions: [session],
-      messages: [userMsg, assistantMsg],
-      files: [att1, att2, att3],
-    };
-    this.persist();
+    this.sessions = [session];
+    this.files = [att1, att2, att3];
+    this.messagesBySession.set(sessionId, [userMsg, assistantMsg]);
+    this.indexDirty = true;
+    this.dirtySessions.add(sessionId);
+    await this.flush();
   }
 
   subscribeSse(res: Response): void {
@@ -278,86 +457,105 @@ class WorkspaceStore {
 
   getWorkspaceSnapshot(): WorkspaceSnapshot {
     return {
-      sessions: [...this.state.sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-      files: [...this.state.files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      sessions: [...this.sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      files: [...this.files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     };
   }
 
   getSession(sessionId: string): ChatSession | undefined {
-    return this.state.sessions.find((s) => s.id === sessionId);
+    return this.sessions.find((s) => s.id === sessionId);
   }
 
   getSessionMessages(sessionId: string): ChatMessage[] {
-    return this.state.messages
-      .filter((m) => m.sessionId === sessionId)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const msgs = this.ensureSessionMessagesLoaded(sessionId);
+    return [...msgs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
   getSessionFiles(sessionId: string): DocxAttachment[] {
-    return this.state.files
+    return this.files
       .filter((f) => f.sessionId === sessionId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   getAllFiles(): DocxAttachment[] {
-    return [...this.state.files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return [...this.files].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   getFileMeta(fileId: string): DocxAttachment | undefined {
-    return this.state.files.find((f) => f.id === fileId);
+    return this.files.find((f) => f.id === fileId);
   }
 
   getFileBuffer(fileId: string): Buffer {
-    const targetPath = resolveSafeFilePath(fileId);
+    const targetPath = this.resolveSafeFilePath(fileId);
     if (!fs.existsSync(targetPath)) {
       throw new Error('DOCX file binary not found on disk.');
     }
     return fs.readFileSync(targetPath);
   }
 
-  createSession(title: string): ChatSession {
+  async getFileBufferAsync(fileId: string): Promise<Buffer> {
+    const targetPath = this.resolveSafeFilePath(fileId);
+    try {
+      return await fs.promises.readFile(targetPath);
+    } catch {
+      throw new Error('DOCX file binary not found on disk.');
+    }
+  }
+
+  createSession(title: string, requestedId?: string): ChatSession {
+    const cleanId = requestedId && isValidEntityId(requestedId) ? requestedId : undefined;
+    if (cleanId) {
+      const existing = this.sessions.find((s) => s.id === cleanId);
+      if (existing) {
+        return existing;
+      }
+    }
+
     const now = new Date().toISOString();
     const session: ChatSession = {
-      id: `session_${crypto.randomBytes(6).toString('hex')}`,
+      id: cleanId || `session_${crypto.randomBytes(6).toString('hex')}`,
       title: (title || 'New Chat').trim().slice(0, 120),
       createdAt: now,
       updatedAt: now,
       messageCount: 0,
       fileCount: 0,
     };
-    this.state.sessions.unshift(session);
-    this.persist();
+    this.sessions.unshift(session);
+    this.messagesBySession.set(session.id, []);
+    this.schedulePersist({ index: true, sessionId: session.id });
     this.broadcast('workspace_updated', { kind: 'session_created', session });
     return session;
   }
 
   renameSessionIfDefault(sessionId: string, firstPrompt: string): void {
-    const session = this.state.sessions.find((s) => s.id === sessionId);
+    const session = this.sessions.find((s) => s.id === sessionId);
     if (!session) return;
     if (session.title === 'New Chat' || session.title === 'Untitled Word Session') {
       const cleaned = firstPrompt.replace(/\s+/g, ' ').trim();
       session.title = cleaned.length > 52 ? `${cleaned.slice(0, 49)}...` : cleaned || 'Word Document';
-      this.persist();
+      this.schedulePersist({ index: true });
       this.broadcast('workspace_updated', { kind: 'session_updated', session });
     }
   }
 
   deleteSession(sessionId: string): boolean {
-    const idx = this.state.sessions.findIndex((s) => s.id === sessionId);
+    const idx = this.sessions.findIndex((s) => s.id === sessionId);
     if (idx === -1) return false;
-    this.state.sessions.splice(idx, 1);
-    this.state.messages = this.state.messages.filter((m) => m.sessionId !== sessionId);
-    const removedFiles = this.state.files.filter((f) => f.sessionId === sessionId);
-    this.state.files = this.state.files.filter((f) => f.sessionId !== sessionId);
+    this.sessions.splice(idx, 1);
+    this.messagesBySession.delete(sessionId);
+
+    const removedFiles = this.files.filter((f) => f.sessionId === sessionId);
+    this.files = this.files.filter((f) => f.sessionId !== sessionId);
     for (const f of removedFiles) {
       try {
-        const p = resolveSafeFilePath(f.id);
-        if (fs.existsSync(p)) fs.unlinkSync(p);
+        const p = this.resolveSafeFilePath(f.id);
+        void fs.promises.unlink(p).catch(() => {});
       } catch {
         // Ignore cleanup errors
       }
     }
-    this.persist();
+
+    this.schedulePersist({ index: true, deleteSessionId: sessionId });
     this.broadcast('workspace_updated', { kind: 'session_deleted', sessionId });
     return true;
   }
@@ -371,28 +569,33 @@ class WorkspaceStore {
       id: message.id || `msg_${crypto.randomBytes(6).toString('hex')}`,
       createdAt: now,
     };
-    this.state.messages.push(fullMessage);
 
-    const session = this.state.sessions.find((s) => s.id === message.sessionId);
-    if (session) {
-      session.updatedAt = now;
-      session.messageCount = this.state.messages.filter((m) => m.sessionId === session.id).length;
+    const msgs = this.ensureSessionMessagesLoaded(message.sessionId);
+    if (!msgs.some((m) => m.id === fullMessage.id)) {
+      msgs.push(fullMessage);
     }
 
-    this.persist();
+    const session = this.sessions.find((s) => s.id === message.sessionId);
+    if (session) {
+      session.updatedAt = now;
+      session.messageCount = msgs.length;
+    }
+
+    this.schedulePersist({ index: true, sessionId: message.sessionId });
     this.broadcast('workspace_updated', { kind: 'message_added', sessionId: message.sessionId });
     return fullMessage;
   }
 
   deleteMessage(sessionId: string, messageId: string): void {
-    this.state.messages = this.state.messages.filter(
-      (m) => !(m.sessionId === sessionId && m.id === messageId),
-    );
-    const session = this.state.sessions.find((s) => s.id === sessionId);
+    const msgs = this.ensureSessionMessagesLoaded(sessionId);
+    const filtered = msgs.filter((m) => m.id !== messageId);
+    this.messagesBySession.set(sessionId, filtered);
+
+    const session = this.sessions.find((s) => s.id === sessionId);
     if (session) {
-      session.messageCount = this.state.messages.filter((m) => m.sessionId === session.id).length;
+      session.messageCount = filtered.length;
     }
-    this.persist();
+    this.schedulePersist({ index: true, sessionId });
   }
 
   saveDocxFile(params: {
@@ -404,13 +607,24 @@ class WorkspaceStore {
     wordCount: number;
     pageCountEstimate: number;
     source: 'generated' | 'uploaded' | 'edited';
+    requestedId?: string;
   }): DocxAttachment {
+    const cleanId =
+      params.requestedId && isValidEntityId(params.requestedId) ? params.requestedId : undefined;
+    if (cleanId) {
+      const existing = this.files.find((f) => f.id === cleanId);
+      if (existing) {
+        return existing;
+      }
+    }
+
     const now = new Date().toISOString();
     const safeName = sanitizeDocxFilename(params.filename);
-    const fileId = `file_${crypto.randomBytes(6).toString('hex')}`;
-    fs.writeFileSync(resolveSafeFilePath(fileId), params.buffer);
+    const fileId = cleanId || `file_${crypto.randomBytes(6).toString('hex')}`;
+    this.ensureStorageDirs();
+    fs.writeFileSync(this.resolveSafeFilePath(fileId), params.buffer);
 
-    const existingSameName = this.state.files.filter(
+    const existingSameName = this.files.filter(
       (f) => f.sessionId === params.sessionId && f.filename.toLowerCase() === safeName.toLowerCase(),
     );
 
@@ -429,14 +643,14 @@ class WorkspaceStore {
       source: params.source,
     };
 
-    this.state.files.unshift(attachment);
-    const session = this.state.sessions.find((s) => s.id === params.sessionId);
+    this.files.unshift(attachment);
+    const session = this.sessions.find((s) => s.id === params.sessionId);
     if (session) {
       session.updatedAt = now;
-      session.fileCount = this.state.files.filter((f) => f.sessionId === session.id).length;
+      session.fileCount = this.files.filter((f) => f.sessionId === session.id).length;
     }
 
-    this.persist();
+    this.schedulePersist({ index: true });
     this.broadcast('workspace_updated', { kind: 'file_created', file: attachment });
     return attachment;
   }

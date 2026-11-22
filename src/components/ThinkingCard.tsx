@@ -12,7 +12,6 @@ export function ThinkingCard({ thoughtText, isStreaming }: ThinkingCardProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Auto-open while thinking streams; auto-collapse as soon as streaming finishes
     if (isStreaming && !prevStreamingRef.current) {
       setIsOpen(true);
     } else if (!isStreaming && prevStreamingRef.current) {
@@ -35,21 +34,21 @@ export function ThinkingCard({ thoughtText, isStreaming }: ThinkingCardProps) {
         type="button"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/80 hover:bg-white border border-[#E2DFD7] text-xs font-medium text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F4F6FB] hover:bg-[#E8F0FC] border border-[#D9E1EF] text-xs font-medium text-[#2E2252] hover:text-[#103F91] transition-colors cursor-pointer whitespace-nowrap"
       >
-        <Brain className="w-3.5 h-3.5 text-neutral-500" />
+        <Brain className="w-3.5 h-3.5 text-[#185ABD]" />
         <span>{isStreaming ? 'Thinking...' : 'Thought process'}</span>
         {isOpen ? (
-          <ChevronDown className="w-3 h-3 text-neutral-400" />
+          <ChevronDown className="w-3 h-3 text-[#585470]" />
         ) : (
-          <ChevronRight className="w-3 h-3 text-neutral-400" />
+          <ChevronRight className="w-3 h-3 text-[#585470]" />
         )}
       </button>
 
       {isOpen && (
         <div
           ref={scrollRef}
-          className="mt-1.5 max-h-48 overflow-y-auto rounded-xl border border-[#E2DFD7] bg-white/75 px-3.5 py-2.5 text-xs leading-relaxed text-neutral-600 font-mono-tabular whitespace-pre-wrap"
+          className="mt-1.5 max-h-48 overflow-y-auto rounded-lg border border-[#D9E1EF] bg-[#F4F6FB] px-3.5 py-2.5 text-xs leading-relaxed text-[#585470] font-mono-tabular whitespace-pre-wrap"
         >
           {thoughtText}
         </div>

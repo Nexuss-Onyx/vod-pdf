@@ -1,7 +1,8 @@
-import { Eye, FileText, Loader2, Upload, X } from 'lucide-react';
+import { Eye, Loader2, Upload, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { DocxAttachment } from '../types/vod';
 import { categorizeFilesByTime, formatBytes, formatClockTime } from '../utils/format';
+import { WordDocIcon } from './VodBrandMarks';
 
 interface AttachmentPopoverProps {
   isOpen: boolean;
@@ -57,15 +58,15 @@ export function AttachmentPopover({
       ref={popoverRef}
       role="dialog"
       aria-label="Recent attachments and upload"
-      className="absolute bottom-full left-0 mb-2 w-80 sm:w-96 rounded-2xl border border-[#DFDBD2] bg-white shadow-xl z-30 overflow-hidden"
+      className="absolute bottom-full left-0 mb-2 w-80 sm:w-96 rounded-xl border border-[#D9E1EF] bg-white shadow-[0_12px_32px_rgba(46,34,82,0.14)] z-30 overflow-hidden"
     >
       {/* Upload Action Header */}
-      <div className="px-3.5 py-2.5 border-b border-[#EFECE6] flex items-center justify-between gap-2 bg-[#FAF9F6]">
+      <div className="px-3.5 py-2.5 border-b border-[#D9E1EF] flex items-center justify-between gap-2 bg-[#F4F6FB]">
         <button
           type="button"
           disabled={isUploading}
           onClick={onTriggerUpload}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#191919] hover:bg-[#333333] text-white text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#185ABD] hover:bg-[#103F91] text-white text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[#185ABD]"
         >
           {isUploading ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -79,7 +80,7 @@ export function AttachmentPopover({
           type="button"
           onClick={onClose}
           aria-label="Close attachments menu"
-          className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-800 hover:bg-black/5 cursor-pointer"
+          className="p-1.5 rounded-lg text-[#585470] hover:text-[#2E2252] hover:bg-[#D9E1EF]/60 cursor-pointer"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -94,20 +95,20 @@ export function AttachmentPopover({
       {/* Categorized Recent Files List */}
       <div className="max-h-72 overflow-y-auto p-2.5 space-y-3">
         {groups.length === 0 ? (
-          <div className="py-6 text-center text-xs text-neutral-500">
+          <div className="py-6 text-center text-xs text-[#585470]">
             No documents yet. Upload a .docx file to begin.
           </div>
         ) : (
           groups.map((group) => (
             <div key={group.label}>
-              <div className="px-2 pb-1 text-[11px] font-semibold text-neutral-500">
+              <div className="px-2 pb-1 text-[11px] font-semibold text-[#585470]">
                 {group.label}
               </div>
               <div className="space-y-1">
                 {group.files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-[#F5F3EE] transition-colors"
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#E8F0FC]/60 transition-colors"
                   >
                     <button
                       type="button"
@@ -117,14 +118,12 @@ export function AttachmentPopover({
                       }}
                       className="flex-1 min-w-0 flex items-center gap-2.5 text-left cursor-pointer"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-[#1A73E8] text-white flex items-center justify-center shrink-0">
-                        <FileText className="w-4 h-4" />
-                      </div>
+                      <WordDocIcon className="w-8 h-8 shrink-0" />
                       <div className="min-w-0">
-                        <div className="text-xs font-semibold text-neutral-900 truncate">
+                        <div className="text-xs font-semibold text-[#1E1935] truncate">
                           {file.filename}
                         </div>
-                        <div className="text-[11px] text-neutral-500 font-mono-tabular truncate">
+                        <div className="text-[11px] text-[#585470] font-mono-tabular truncate">
                           {formatBytes(file.sizeBytes)} · {formatClockTime(file.updatedAt)}
                         </div>
                       </div>
@@ -137,7 +136,7 @@ export function AttachmentPopover({
                         onClose();
                       }}
                       aria-label={`Preview ${file.filename}`}
-                      className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-900 hover:bg-white cursor-pointer shrink-0"
+                      className="p-1.5 rounded-lg text-[#585470] hover:text-[#185ABD] hover:bg-white cursor-pointer shrink-0"
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
