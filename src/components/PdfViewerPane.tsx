@@ -350,6 +350,12 @@ export function PdfViewerPane({ file, onClose, onAskToEdit }: PdfViewerPaneProps
     setJumpValue(String(target));
   };
 
+  const pageInfoMap = useMemo(() => {
+    const map = new Map<number, PdfInspection['pages'][number]>();
+    for (const page of inspection?.pages ?? []) map.set(page.pageNumber, page);
+    return map;
+  }, [inspection]);
+
   const pageTextMap = useMemo(() => {
     const map = new Map<number, string>();
     if (inspection?.plainTextByPage) {
@@ -564,7 +570,7 @@ export function PdfViewerPane({ file, onClose, onAskToEdit }: PdfViewerPaneProps
                 !loadError &&
                 pdf &&
                 Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => {
-                  const info = inspection?.pages?.find((page) => page.pageNumber === pageNumber);
+                  const info = pageInfoMap.get(pageNumber);
                   return (
                     <PdfPageView
                       key={`${file.id}-${file.version}-${pageNumber}`}
