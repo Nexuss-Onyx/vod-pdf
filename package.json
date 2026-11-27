@@ -10,8 +10,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "preinstall": "npm config set legacy-peer-deps true",
-    "test": "node --import tsx --test server/*.test.ts src/utils/*.test.ts src/components/*.test.ts"
+    "test": "tsx --test server/*.test.ts api/*.test.ts src/utils/*.test.ts src/components/*.test.ts"
+  },
+  "engines": {
+    "node": "22.x"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -30,15 +32,14 @@
     "vite": "^8.3.0"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2"
-  },
-  "description": "Vod PDF \u2014 autonomous PDF officer with an in-app PDF reader, viewer, and editing workspace."
+    "typescript": "^7.0.2",
+    "@types/express": "^4.17.21"
+  }
 }

@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-22
-- **Supersedes:** the inherited Vod Word DOCX engine (`docx`, `docx-preview`, `mammoth`, JSZip OOXML surgery)
+- **Supersedes:** the legacy DOCX engine (`docx`, `docx-preview`, `mammoth`, JSZip OOXML surgery)
 
 ## Context
 
@@ -40,7 +40,7 @@ packages and OOXML XML.
 
 ## Consequences
 
-- DOCX input is rejected at the API boundary with a pointer to Vod Word; no conversion path exists.
+- DOCX input is rejected at the API boundary with a `.pdf`-only error; no conversion path exists.
 - Legacy data directories containing DOCX artifacts are read defensively: non-`.pdf` records are
   dropped with a warning instead of being served or silently converted.
 - Scanned PDFs are detected (`textWordCount` below the page-count threshold) and flagged; they can

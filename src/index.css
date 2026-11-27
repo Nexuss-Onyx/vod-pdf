@@ -6,32 +6,32 @@
     --font-body: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-    /* Vod Master Brand Tokens (shared across Vod Suite — non-black Sovereign Plum & Studio Mist) */
-    --vod-brand: #2e2252;
-    --vod-brand-hover: #3e2e6e;
-    --vod-brand-soft: #f2eef9;
-    --vod-canvas: #f4f6fb;
+    /* Vod PDF Brand Tokens — Sovereign Garnet & Venetian Carmine (distinct from flat PDF red) */
+    --vod-brand: #6e162b;
+    --vod-brand-hover: #851d35;
+    --vod-brand-soft: #fbf1f3;
+    --vod-canvas: #f8f7f8;
     --vod-surface: #ffffff;
-    --vod-surface-subtle: #eceff7;
-    --vod-border: #d9e1ef;
-    --vod-border-strong: #c3cfe4;
-    --vod-ink: #1e1935;
-    --vod-ink-muted: #585470;
+    --vod-surface-subtle: #f1eff2;
+    --vod-border: #e3dfe4;
+    --vod-border-strong: #cfc8d0;
+    --vod-ink: #1f171b;
+    --vod-ink-muted: #63565c;
 
-    /* Swappable App Suite Accent Tokens — Default: Vod PDF Amethyst */
-    --app-accent: #4a3680;
-    --app-accent-deep: #2e2252;
-    --app-accent-light: #b9a9dc;
-    --app-accent-soft: #f2eef9;
-    --app-accent-border: #d6c9ee;
+    /* Vod PDF Accent Tokens */
+    --app-accent: #a8203e;
+    --app-accent-deep: #6e162b;
+    --app-accent-light: #d98294;
+    --app-accent-soft: #fbf1f3;
+    --app-accent-border: #ebcbd2;
   }
 
   [data-vod-app="pdf"] {
-    --app-accent: #4a3680;
-    --app-accent-deep: #2e2252;
-    --app-accent-light: #b9a9dc;
-    --app-accent-soft: #f2eef9;
-    --app-accent-border: #d6c9ee;
+    --app-accent: #a8203e;
+    --app-accent-deep: #6e162b;
+    --app-accent-light: #d98294;
+    --app-accent-soft: #fbf1f3;
+    --app-accent-border: #ebcbd2;
   }
 
   html,
@@ -68,8 +68,8 @@
 
 .pdf-viewer-host {
   background:
-    radial-gradient(circle at 50% 0%, rgba(74, 54, 128, 0.05), transparent 60%),
-    #eceff7;
+    radial-gradient(circle at 50% 0%, rgba(168, 32, 62, 0.045), transparent 60%),
+    #f1eff2;
 }
 
 .pdf-page {
@@ -81,8 +81,8 @@
   border-radius: 3px;
   overflow: hidden;
   box-shadow:
-    0 4px 18px rgba(46, 34, 82, 0.08),
-    0 0 0 1px rgba(46, 34, 82, 0.1);
+    0 4px 18px rgba(110, 22, 43, 0.08),
+    0 0 0 1px rgba(110, 22, 43, 0.1);
 }
 
 .pdf-canvas {
@@ -132,7 +132,7 @@
 }
 
 .pdf-text-layer ::selection {
-  background: rgba(74, 54, 128, 0.26);
+  background: rgba(168, 32, 62, 0.24);
 }
 
 .pdf-page-number {
@@ -141,10 +141,10 @@
   bottom: 6px;
   z-index: 2;
   padding: 1px 6px;
-  border-radius: 999px;
-  background: rgba(244, 246, 251, 0.9);
-  border: 1px solid rgba(217, 225, 239, 0.9);
-  color: #585470;
+  border-radius: 4px;
+  background: rgba(248, 247, 248, 0.92);
+  border: 1px solid rgba(227, 223, 228, 0.95);
+  color: #63565c;
   font-family: var(--font-mono);
   font-size: 9px;
   line-height: 1.5;

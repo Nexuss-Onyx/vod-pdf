@@ -52,6 +52,8 @@ const inspection: PdfInspection = {
     canMerge: true,
     canSplit: true,
     canRotate: true,
+    canWatermark: true,
+    canCrop: true,
     canEncrypt: false,
     canRedact: false,
   },

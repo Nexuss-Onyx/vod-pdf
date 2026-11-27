@@ -172,6 +172,18 @@ test('inspect endpoint returns PDF inspection without OOXML fields', async () =>
     assert.equal('documentXml' in body, false);
     assert.equal('wordCount' in body, false);
     assert.equal('trackedChanges' in body, false);
+
+    const searchRes = await fetch(`${harness.baseUrl}/api/files/${fileId}/search?q=Fulfillment`);
+    assert.equal(searchRes.status, 200);
+    const searchBody = (await searchRes.json()) as {
+      totalMatches: number;
+      matches: Array<{ pageNumber: number; snippet: string }>;
+    };
+    assert.ok(searchBody.totalMatches >= 1);
+    assert.ok(searchBody.matches[0].pageNumber >= 1);
+
+    const emptySearchRes = await fetch(`${harness.baseUrl}/api/files/${fileId}/search?q=`);
+    assert.equal(emptySearchRes.status, 400);
   } finally {
     await harness.close();
   }

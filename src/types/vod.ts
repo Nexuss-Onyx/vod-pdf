@@ -107,6 +107,8 @@ export interface PdfCapabilities {
   canMerge: boolean;
   canSplit: boolean;
   canRotate: boolean;
+  canWatermark: boolean;
+  canCrop: boolean;
   canEncrypt: boolean;
   canRedact: boolean;
 }

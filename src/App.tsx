@@ -37,6 +37,7 @@ export default function App() {
 
   const [viewerFile, setViewerFile] = useState<PdfAttachment | null>(null);
   const [pendingFileAttachment, setPendingFileAttachment] = useState<PdfAttachment | null>(null);
+  const [composerPrefill, setComposerPrefill] = useState<{ text: string; key: number } | null>(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAllFilesOpen, setIsAllFilesOpen] = useState(false);
@@ -198,6 +199,16 @@ export default function App() {
 
   useEffect(() => {
     const es = new EventSource('/api/events');
+    es.addEventListener('connected', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data) as { mode?: string };
+        if (data.mode === 'serverless') {
+          es.close();
+        }
+      } catch {
+        // Ignore non-JSON connected payloads
+      }
+    });
     es.addEventListener('workspace_updated', () => {
       void syncWorkspaceWithCloud();
     });
@@ -453,14 +464,14 @@ export default function App() {
   return (
     <div
       data-vod-app="pdf"
-      className="h-screen w-screen overflow-hidden flex flex-col bg-[#F4F6FB] text-[#1E1935]"
+      className="h-[100dvh] w-full overflow-hidden flex flex-col bg-[#F8F7F8] text-[#1F171B]"
     >
       <TopBar
         onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
         onNewChat={handleNewChat}
       />
 
-      <main className="flex-1 flex min-h-0 overflow-hidden">
+      <main className="flex-1 flex min-h-0 overflow-hidden relative">
         <SessionSidebar
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -472,43 +483,56 @@ export default function App() {
         />
 
         <div className="flex-1 flex min-w-0 min-h-0 overflow-hidden">
-          <ChatPane
-            sessionId={activeSessionId}
-            messages={messages}
-            allFiles={allFiles}
-            activeFileId={viewerFile?.id ?? null}
-            isStreaming={isStreaming}
-            liveThoughtText={liveThoughtText}
-            liveSteps={liveSteps}
-            liveText={liveText}
-            pendingFileAttachment={pendingFileAttachment}
-            onClearPendingFile={() => setPendingFileAttachment(null)}
-            onSelectPendingFile={(file) => setPendingFileAttachment(file)}
-            onAttachUploadedFile={(file) => {
-              setPendingFileAttachment(file);
-              const nextSessionFiles = [file, ...sessionFiles];
-              const nextAllFiles = [file, ...allFiles];
-              setSessionFiles(nextSessionFiles);
-              setAllFiles(nextAllFiles);
-              void saveLocalMeta({
-                sessions: sessionsRef.current,
-                files: nextAllFiles,
-                activeSessionId,
-              });
-            }}
-            onSendMessage={handleSendMessage}
-            onRegenerateMessage={handleRegenerateMessage}
-            onOpenFile={(file) => setViewerFile(file)}
-            onViewAllFiles={() => setIsAllFilesOpen(true)}
-          />
+          <div
+            className={`${
+              viewerFile ? 'hidden lg:flex' : 'flex'
+            } flex-1 min-w-0 min-h-0 overflow-hidden`}
+          >
+            <ChatPane
+              sessionId={activeSessionId}
+              messages={messages}
+              allFiles={allFiles}
+              activeFileId={viewerFile?.id ?? null}
+              isStreaming={isStreaming}
+              liveThoughtText={liveThoughtText}
+              liveSteps={liveSteps}
+              liveText={liveText}
+              pendingFileAttachment={pendingFileAttachment}
+              composerPrefill={composerPrefill}
+              onClearPendingFile={() => setPendingFileAttachment(null)}
+              onSelectPendingFile={(file) => setPendingFileAttachment(file)}
+              onAttachUploadedFile={(file) => {
+                setPendingFileAttachment(file);
+                const nextSessionFiles = [file, ...sessionFiles];
+                const nextAllFiles = [file, ...allFiles];
+                setSessionFiles(nextSessionFiles);
+                setAllFiles(nextAllFiles);
+                void saveLocalMeta({
+                  sessions: sessionsRef.current,
+                  files: nextAllFiles,
+                  activeSessionId,
+                });
+              }}
+              onSendMessage={handleSendMessage}
+              onRegenerateMessage={handleRegenerateMessage}
+              onOpenFile={(file) => setViewerFile(file)}
+              onViewAllFiles={() => setIsAllFilesOpen(true)}
+            />
+          </div>
 
           {viewerFile && (
             <PdfViewerPane
               file={viewerFile}
               onClose={() => setViewerFile(null)}
-              onAskToEdit={(file) => {
+              onAskToEdit={(file, prefillPrompt) => {
                 setPendingFileAttachment(file);
-                document.getElementById('vod-chat-input')?.focus();
+                if (prefillPrompt) {
+                  setComposerPrefill({ text: prefillPrompt, key: Date.now() });
+                }
+                if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                  setViewerFile(null);
+                }
+                setTimeout(() => document.getElementById('vod-chat-input')?.focus(), 0);
               }}
             />
           )}

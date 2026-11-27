@@ -133,7 +133,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'edit_pdf',
     description:
-      'Apply supported PDF edits: append_blocks (new page(s) at the end), rotate_pages, delete_pages, set_metadata. In-place text replacement (replace_text) is NOT supported and returns unsupported_operation.',
+      'Apply supported PDF edits: append_blocks (new page(s) at the end), rotate_pages, delete_pages, set_metadata, add_watermark, crop_pages. In-place text replacement (replace_text) is NOT supported and returns unsupported_operation.',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -148,19 +148,26 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
             properties: {
               type: {
                 type: Type.STRING,
-                description: 'append_blocks | rotate_pages | delete_pages | set_metadata',
+                description:
+                  'append_blocks | rotate_pages | delete_pages | set_metadata | add_watermark | crop_pages',
               },
               blocks: { type: Type.ARRAY, items: BLOCK_SCHEMA },
               pages: {
                 type: Type.ARRAY,
                 items: { type: Type.NUMBER },
-                description: '1-based page numbers for rotate/delete.',
+                description: '1-based page numbers for rotate/delete/watermark/crop.',
               },
               degrees: { type: Type.NUMBER, description: '90, 180, or 270 for rotate_pages.' },
               title: { type: Type.STRING },
               author: { type: Type.STRING },
               subject: { type: Type.STRING },
               keywords: { type: Type.STRING },
+              text: { type: Type.STRING, description: 'Watermark text for add_watermark.' },
+              opacity: { type: Type.NUMBER, description: 'Watermark opacity (0.05 to 0.6).' },
+              left: { type: Type.NUMBER, description: 'Left bound in points for crop_pages.' },
+              bottom: { type: Type.NUMBER, description: 'Bottom bound in points for crop_pages.' },
+              right: { type: Type.NUMBER, description: 'Right bound in points for crop_pages.' },
+              top: { type: Type.NUMBER, description: 'Top bound in points for crop_pages.' },
             },
             required: ['type'],
           },

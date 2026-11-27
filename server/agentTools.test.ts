@@ -26,16 +26,21 @@ test('agent tool declarations are PDF-native and contain no DOCX aliases', () =>
   assert.match(serialized, /\.pdf/);
 });
 
-test('system prompt is Vod PDF, loads the PDF skill, and forbids DOCX guidance', () => {
+test('system prompt is Vod PDF, loads Anthropic PDF skill, and forbids DOCX guidance', () => {
   const prompt = buildVodPdfSystemPrompt();
 
   assert.match(prompt, /You are \*\*Vod PDF\*\*/);
   assert.match(prompt, /<pdf_skill_specification>/);
-  assert.match(prompt, /supports pages|fixed-layout/i);
+  assert.match(prompt, /PDF Processing Guide/);
+  assert.match(prompt, /FORMS\.md/);
+  assert.match(prompt, /REFERENCE\.md/);
+  assert.match(prompt, /fixed-layout/i);
   assert.match(prompt, /create_pdf/);
   assert.match(prompt, /inspect_pdf/);
+  assert.match(prompt, /add_watermark/);
+  assert.match(prompt, /crop_pages/);
 
-  assert.equal(/word\/document\.xml|docx_skill_specification|<w:p|<w:r\b/i.test(prompt), false);
+  assert.equal(/word\/document\.xml|docx_skill_specification|<w:p|<w:r\b|Vod Word/i.test(prompt), false);
   // DOCX is only ever mentioned as an explicitly rejected format, never as an instruction.
   assert.equal(/create_docx|edit_docx|inspect_docx|search_docx/.test(prompt), false);
 });

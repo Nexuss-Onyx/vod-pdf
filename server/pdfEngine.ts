@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   degrees,
   PDFArray,
@@ -51,6 +52,8 @@ export const PDF_CAPABILITIES: PdfCapabilities = {
   canMerge: true,
   canSplit: true,
   canRotate: true,
+  canWatermark: true,
+  canCrop: true,
   canEncrypt: false,
   canRedact: false,
 };
@@ -74,9 +77,12 @@ export type PdfFileMeta = Omit<PdfAttachment, 'mimeType' | 'pageCount' | 'textWo
  * pdf.js (Node legacy build) loader
  * -----------------------------------------------------------------------------------------------*/
 
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
 const STANDARD_FONT_CANDIDATES = [
   path.resolve(process.cwd(), 'node_modules/pdfjs-dist/standard_fonts') + path.sep,
   path.resolve(process.cwd(), '../node_modules/pdfjs-dist/standard_fonts') + path.sep,
+  path.resolve(MODULE_DIR, '../node_modules/pdfjs-dist/standard_fonts') + path.sep,
 ];
 
 function resolveStandardFontsDir(): string | undefined {
@@ -539,14 +545,14 @@ export interface CreatePdfResult {
   warnings: string[];
 }
 
-const COLOR_PLUM = rgb(0.18, 0.133, 0.322); // #2E2252
-const COLOR_ACCENT = rgb(0.345, 0.251, 0.58); // #58409a
-const COLOR_INK = rgb(0.118, 0.098, 0.208); // #1E1935
-const COLOR_MUTED = rgb(0.345, 0.329, 0.439); // #585470
-const COLOR_BORDER = rgb(0.851, 0.882, 0.937); // #D9E1EF
-const COLOR_SOFT = rgb(0.953, 0.957, 0.98); // #F3F4FA
+const COLOR_PLUM = rgb(0.431, 0.086, 0.169); // #6E162B Sovereign Garnet
+const COLOR_ACCENT = rgb(0.659, 0.125, 0.243); // #A8203E Venetian Carmine
+const COLOR_INK = rgb(0.122, 0.09, 0.106); // #1F171B
+const COLOR_MUTED = rgb(0.388, 0.337, 0.361); // #63565C
+const COLOR_BORDER = rgb(0.89, 0.875, 0.894); // #E3DFE4
+const COLOR_SOFT = rgb(0.984, 0.945, 0.953); // #FBF1F3
 const COLOR_WHITE = rgb(1, 1, 1);
-const COLOR_RULE = rgb(0.765, 0.812, 0.894); // #C3CFE4
+const COLOR_RULE = rgb(0.922, 0.796, 0.824); // #EBCBD2
 
 const PAGE_SIZES = {
   letter: { width: 612, height: 792 },
@@ -1028,7 +1034,7 @@ class PdfComposer {
     this.space(12);
   }
 
-  /** Opens a page with a plum title band — used when a document has no cover block. */
+  /** Opens a page with a Garnet accent band — used when a document has no cover block. */
   titleBlock(title: string, subtitle?: string): void {
     this.startPage();
     const page = this.currentPage;
@@ -1325,6 +1331,8 @@ export type PdfEditOperation =
   | { type: 'rotate_pages'; pages?: number[]; degrees: 90 | 180 | 270 | number }
   | { type: 'delete_pages'; pages: number[] }
   | { type: 'set_metadata'; title?: string; author?: string; subject?: string; keywords?: string }
+  | { type: 'add_watermark'; text: string; pages?: number[]; opacity?: number }
+  | { type: 'crop_pages'; pages?: number[]; left: number; bottom: number; right: number; top: number }
   | { type: 'replace_text'; find: string; replace: string };
 
 export interface EditPdfResult {
@@ -1425,6 +1433,78 @@ export async function editPdfBuffer(
         doc.setKeywords(keywords);
       }
       applied.push('Updated document metadata.');
+    } else if (type === 'add_watermark') {
+      const watermarkText = sanitizeForWinAnsi(String(op.text || '').trim());
+      if (!watermarkText) {
+        throw new PdfEngineError('unsupported_operation', 'add_watermark requires non-empty watermark text.');
+      }
+      const opacityRaw = typeof op.opacity === 'number' ? op.opacity : 0.16;
+      const opacity = Math.min(0.6, Math.max(0.05, opacityRaw));
+      const pages = doc.getPages();
+      const targetIndexes =
+        Array.isArray(op.pages) && op.pages.length > 0
+          ? (op.pages as unknown[]).map((p) => Number(p) - 1)
+          : pages.map((_, index) => index);
+      let stamped = 0;
+      for (const index of targetIndexes) {
+        const page = pages[index];
+        if (!page) {
+          warnings.push(`Page ${index + 1} does not exist; skipped watermark.`);
+          continue;
+        }
+        const { width, height } = page.getSize();
+        const fontSize = Math.min(54, Math.max(22, Math.floor(width / Math.max(watermarkText.length * 0.65, 6))));
+        const textWidth = fonts.bold.widthOfTextAtSize(watermarkText, fontSize);
+        const rad = (45 * Math.PI) / 180;
+        const x = width / 2 - (textWidth / 2) * Math.cos(rad) + (fontSize / 2) * Math.sin(rad);
+        const y = height / 2 - (textWidth / 2) * Math.sin(rad) - (fontSize / 2) * Math.cos(rad);
+        page.drawText(watermarkText, {
+          x,
+          y,
+          size: fontSize,
+          font: fonts.bold,
+          color: COLOR_ACCENT,
+          opacity,
+          rotate: degrees(45),
+        });
+        stamped += 1;
+      }
+      applied.push(`Stamped watermark "${watermarkText}" on ${stamped} page(s).`);
+    } else if (type === 'crop_pages') {
+      const left = Number(op.left);
+      const bottom = Number(op.bottom);
+      const right = Number(op.right);
+      const top = Number(op.top);
+      if (
+        !Number.isFinite(left) ||
+        !Number.isFinite(bottom) ||
+        !Number.isFinite(right) ||
+        !Number.isFinite(top) ||
+        right <= left ||
+        top <= bottom
+      ) {
+        throw new PdfEngineError(
+          'unsupported_operation',
+          'crop_pages requires valid numeric left, bottom, right, and top bounds with right > left and top > bottom.',
+        );
+      }
+      const pages = doc.getPages();
+      const targetIndexes =
+        Array.isArray(op.pages) && op.pages.length > 0
+          ? (op.pages as unknown[]).map((p) => Number(p) - 1)
+          : pages.map((_, index) => index);
+      let cropped = 0;
+      for (const index of targetIndexes) {
+        const page = pages[index];
+        if (!page) {
+          warnings.push(`Page ${index + 1} does not exist; skipped crop.`);
+          continue;
+        }
+        page.setCropBox(left, bottom, right - left, top - bottom);
+        page.setMediaBox(left, bottom, right - left, top - bottom);
+        cropped += 1;
+      }
+      applied.push(`Cropped ${cropped} page(s) to [${left}, ${bottom}, ${right}, ${top}].`);
     } else if (type === 'replace_text') {
       throw new PdfEngineError(
         'unsupported_operation',
@@ -1434,7 +1514,7 @@ export async function editPdfBuffer(
     } else {
       throw new PdfEngineError(
         'unsupported_operation',
-        `Unsupported edit operation "${op.type}". Supported: append_blocks, rotate_pages, delete_pages, set_metadata.`,
+        `Unsupported edit operation "${op.type}". Supported: append_blocks, rotate_pages, delete_pages, set_metadata, add_watermark, crop_pages.`,
       );
     }
   }
@@ -1566,7 +1646,7 @@ export async function annotatePdfBuffer(
     Name: PDFName.of('Comment'),
     M: PDFString.of(pdfDateLiteral(createdAt)),
     NM: PDFString.of(commentId),
-    C: context.obj([PDFNumber.of(0.345), PDFNumber.of(0.251), PDFNumber.of(0.58)]),
+    C: context.obj([PDFNumber.of(0.659), PDFNumber.of(0.125), PDFNumber.of(0.243)]),
     F: PDFNumber.of(4),
   });
 

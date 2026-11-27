@@ -166,6 +166,22 @@ test('editPdfBuffer applies supported operations and gates text replacement', as
   const deleted = await editPdfBuffer(created.buffer, [{ type: 'delete_pages', pages: [2] }]);
   assert.equal(deleted.pageCount, created.pageCount - 1);
 
+  const watermarked = await editPdfBuffer(created.buffer, [
+    { type: 'add_watermark', text: 'CONFIDENTIAL', opacity: 0.2 },
+  ]);
+  assert.equal(watermarked.pageCount, created.pageCount);
+  const watermarkedSearch = await searchPdfBuffer(watermarked.buffer, 'CONFIDENTIAL');
+  assert.ok(watermarkedSearch.totalMatches >= 1, 'watermark text should be stamped onto pages');
+
+  const cropped = await editPdfBuffer(created.buffer, [
+    { type: 'crop_pages', pages: [1], left: 36, bottom: 36, right: 576, top: 756 },
+  ]);
+  const croppedInspection = await inspectPdfBuffer(cropped.buffer, meta());
+  assert.equal(croppedInspection.pages[0].width, 540);
+  assert.equal(croppedInspection.pages[0].height, 720);
+  assert.equal(croppedInspection.capabilities.canWatermark, true);
+  assert.equal(croppedInspection.capabilities.canCrop, true);
+
   await assert.rejects(
     () =>
       editPdfBuffer(created.buffer, [

@@ -1,10 +1,14 @@
 import express, { type Express } from 'express';
 import { runAutonomousPdfAgent } from './geminiAgent.ts';
-import { assertPdfBuffer, inspectPdfBuffer, PdfEngineError } from './pdfEngine.ts';
+import { assertPdfBuffer, inspectPdfBuffer, PdfEngineError, searchPdfBuffer } from './pdfEngine.ts';
 import { isValidEntityId, sanitizePdfFilename } from './pdfUtils.ts';
 import { workspaceStore, type WorkspaceStore } from './store.ts';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+function isServerlessRuntime(): boolean {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
 
 function errorPayload(err: unknown, fallback: string): { error: string; code: string } {
   if (err instanceof PdfEngineError) {
@@ -34,6 +38,13 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
+    if (isServerlessRuntime()) {
+      res.write(
+        `event: connected\ndata: ${JSON.stringify({ ok: true, mode: 'serverless' })}\n\n`,
+      );
+      res.end();
+      return;
+    }
     res.write(`event: connected\ndata: ${JSON.stringify({ ok: true })}\n\n`);
 
     store.subscribeSse(res);
@@ -51,11 +62,14 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
     });
   });
 
-  app.post('/api/sessions', (req, res) => {
+  app.post('/api/sessions', async (req, res) => {
     const title = typeof req.body?.title === 'string' ? req.body.title : 'New Chat';
     const requestedId =
       typeof req.body?.id === 'string' && isValidEntityId(req.body.id) ? req.body.id : undefined;
     const session = store.createSession(title, requestedId);
+    if (isServerlessRuntime()) {
+      await store.flush();
+    }
     res.status(201).json({ session });
   });
 
@@ -77,7 +91,7 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
     });
   });
 
-  app.delete('/api/sessions/:sessionId', (req, res) => {
+  app.delete('/api/sessions/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
     if (!isValidEntityId(sessionId)) {
       res.status(400).json({ error: 'Invalid session ID.', code: 'invalid_session_id' });
@@ -87,6 +101,9 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
     if (!deleted) {
       res.status(404).json({ error: 'Session not found.', code: 'session_not_found' });
       return;
+    }
+    if (isServerlessRuntime()) {
+      await store.flush();
     }
     res.json({ ok: true });
   });
@@ -122,7 +139,7 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
       if (/\.(docx?|docm|odt|rtf)$/i.test(rawFilename) || (buffer[0] === 0x50 && buffer[1] === 0x4b)) {
         res.status(400).json({
           error:
-            'Vod PDF only accepts .pdf documents. Word/DOCX files belong in Vod Word — export them to PDF first.',
+            'Vod PDF only accepts .pdf documents. Export non-PDF documents to .pdf first.',
           code: 'invalid_pdf',
         });
         return;
@@ -168,6 +185,9 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
         requestedId: requestedFileId,
       });
 
+      if (isServerlessRuntime()) {
+        await store.flush();
+      }
       res.status(201).json({ file: saved, inspection: { ...inspection, file: saved } });
     } catch (err) {
       res.status(400).json(errorPayload(err, 'Failed to process the uploaded PDF.'));
@@ -219,6 +239,31 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
       res.json(inspection);
     } catch (err) {
       res.status(500).json(errorPayload(err, 'Failed to inspect the PDF.'));
+    }
+  });
+
+  app.get('/api/files/:fileId/search', async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      if (!isValidEntityId(fileId)) {
+        res.status(400).json({ error: 'Invalid file ID.', code: 'invalid_file_id' });
+        return;
+      }
+      if (!query) {
+        res.status(400).json({ error: 'Search query (q) is required.', code: 'unsupported_operation' });
+        return;
+      }
+      const meta = store.getFileMeta(fileId);
+      if (!meta) {
+        res.status(404).json({ error: 'File not found.', code: 'file_not_found' });
+        return;
+      }
+      const buffer = await store.getFileBufferAsync(fileId);
+      const result = await searchPdfBuffer(buffer, query);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json(errorPayload(err, 'Failed to search the PDF.'));
     }
   });
 
@@ -305,6 +350,9 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
         attachments: result.attachments.length > 0 ? result.attachments : undefined,
       });
 
+      if (isServerlessRuntime()) {
+        await store.flush();
+      }
       sendSse('done', { message: assistantMessage });
       res.end();
     } catch (err) {
@@ -315,6 +363,9 @@ export function createVodPdfApp(store: WorkspaceStore = workspaceStore): Express
         content: `Error: ${errorMsg}`,
         error: errorMsg,
       });
+      if (isServerlessRuntime()) {
+        await store.flush();
+      }
       sendSse('error', { error: errorMsg, message: errorMessage });
       res.end();
     }

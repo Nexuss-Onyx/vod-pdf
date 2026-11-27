@@ -1,135 +1,314 @@
-# Vod PDF — Authoritative PDF Engineering Skill
-
-This skill is the single source of truth for how **Vod PDF** creates, reads, edits, annotates,
-fills, and reorganizes PDF documents. It replaces any prior Word/OOXML guidance: Vod PDF is a
-PDF-native officer. There is no DOCX conversion, no OOXML package structure, and no Word markup in
-this product.
-
+---
+name: pdf
+description: Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.
+license: Complete terms in LICENSE.txt
 ---
 
-## 1. The PDF reality you must respect
+# PDF Processing Guide
 
-A PDF is a **fixed-layout page description**, not a flowing word-processing document.
+## Overview
 
-- Pages have fixed media boxes (US Letter `612 × 792 pt`, A4 `595.28 × 841.89 pt`, or arbitrary sizes).
-- Content is drawn with positioned text runs and graphics operators. There are no paragraphs,
-  headings, or "runs" that you can reflow after the fact.
-- Text you can search is the **text layer**. Scans and image-only exports have no text layer.
-- Structure that survives editing is limited to: pages, page rotation, outlines/bookmarks,
-  annotations/comments, AcroForm fields, and metadata.
-- Therefore: **in-place rewriting of arbitrary existing body text is not supported.** Never claim
-  you rewrote an existing sentence. Instead:
-  1. Generate a new, corrected PDF (`create_pdf`), or
-  2. Append corrected content (`edit_pdf` with `append_blocks`), or
-  3. Anchor a review comment (`comment_pdf`) describing the exact fix, or
-  4. Fill a form field (`fill_pdf_form`).
+This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see REFERENCE.md. If you need to fill out a PDF form, read FORMS.md and follow its instructions.
 
-## 2. Capability contract (never overpromise)
+## Quick Start
 
-| Capability | Supported |
-|---|---|
-| Create new PDFs with rich layout | Yes |
-| Extract text / inspect metadata, pages, outline, forms, annotations | Yes |
-| Keyword search with page + snippet | Yes (text-layer PDFs only) |
-| Add annotations/comments anchored to text or coordinates | Yes |
-| Fill existing AcroForm fields | Yes |
-| Merge, split, extract, rotate pages | Yes |
-| Replace body text inside an existing PDF | **No** |
-| OCR of scanned pages | **No** (future) |
-| Encryption / password protection / redaction | **No** |
+```python
+from pypdf import PdfReader, PdfWriter
 
-If a request falls in a "No" row, say so plainly, then offer the nearest supported alternative.
+# Read a PDF
+reader = PdfReader("document.pdf")
+print(f"Pages: {len(reader.pages)}")
 
-## 3. Workflow discipline
+# Extract text
+text = ""
+for page in reader.pages:
+    text += page.extract_text()
+```
 
-1. **Plan** — audience, page size, orientation, section hierarchy, tables, and which file(s) you
-   will produce.
-2. **Inspect first** — for any existing or attached PDF call `inspect_pdf` before answering or
-   editing. Use `search_pdf` to locate exact passages. Never guess document contents.
-3. **Act** with the narrowest tool that does the job.
-4. **Verify** — after generating or editing, confirm the returned page count, word count, applied
-   operations, and warnings. Summarize concrete facts, not intentions.
-5. **Summarize** in clean Markdown; the file card is the deliverable.
+## Python Libraries
 
-## 4. Creation rules (`create_pdf`)
+### pypdf - Basic Operations
 
-Blocks are rendered top-to-bottom by the Vod PDF layout engine.
+#### Merge PDFs
+```python
+from pypdf import PdfWriter, PdfReader
 
-| Block | Fields | Notes |
-|---|---|---|
-| `cover_page` | `text` (title), `subtitle` | Full-bleed plum band, title, subtitle, generated-date line. Use for reports/contracts ≥ 3 pages. |
-| `heading1` / `heading2` / `heading3` | `text` | Bold plum with accent rule. Keep headings under ~80 characters. |
-| `paragraph` | `text` | Body copy, wraps automatically. |
-| `bullet_list` / `numbered_list` | `items[]` | Items wrap and stay inside margins. |
-| `table` | `headers[]`, `rows[][]` | Equal-width columns, header band repeats across page breaks. Keep ≤ 6 columns and short cell text. |
-| `key_values` | `pairs[{label, value}]` | Two-column fact blocks (owners, dates, IDs, totals). |
-| `callout` | `calloutTitle`, `text` | Executive summary / warning box with accent rule. |
-| `quote` | `text` | Italic pull-quote with left rule. |
-| `divider` | — | Thin hairline separator. |
-| `page_break` | — | Forces a new page. |
-| `toc` | — | Renders "Contents" from the document's headings. |
+writer = PdfWriter()
+for pdf_file in ["doc1.pdf", "doc2.pdf", "doc3.pdf"]:
+    reader = PdfReader(pdf_file)
+    for page in reader.pages:
+        writer.add_page(page)
 
-Layout guidance:
+with open("merged.pdf", "wb") as output:
+    writer.write(output)
+```
 
-- Defaults: US Letter portrait, 56 pt margins, 10.5 pt body, 1.42 line height.
-- Choose `pageSize: "a4"` and/or `orientation: "landscape"` only when the content calls for it
-  (wide financial tables, dashboards, dense matrices).
-- Prefer 3–6 sections and 1–3 tables for an executive brief; keep tables narrow enough to read.
-- Write complete, publication-grade prose. No `[TBD]`, `lorem ipsum`, or placeholder brackets
-  unless the user explicitly requests a fillable template.
-- Filenames must end in `.pdf`, use underscores instead of spaces, and describe the document
-  (`Q4_Operations_Review.pdf`).
-- Standard PDF fonts are WinAnsi; exotic glyphs (emoji, arrows, CJK) are transliterated or replaced.
-  Keep copy in Latin-1 typography.
+#### Split PDF
+```python
+reader = PdfReader("input.pdf")
+for i, page in enumerate(reader.pages):
+    writer = PdfWriter()
+    writer.add_page(page)
+    with open(f"page_{i+1}.pdf", "wb") as output:
+        writer.write(output)
+```
 
-## 5. Editing rules (`edit_pdf`)
+#### Extract Metadata
+```python
+reader = PdfReader("document.pdf")
+meta = reader.metadata
+print(f"Title: {meta.title}")
+print(f"Author: {meta.author}")
+print(f"Subject: {meta.subject}")
+print(f"Creator: {meta.creator}")
+```
 
-Supported operations only:
+#### Rotate Pages
+```python
+reader = PdfReader("input.pdf")
+writer = PdfWriter()
 
-- `append_blocks` — adds new page(s) at the end of the PDF using the same block model. This is the
-  correct tool for "add a summary page", "attach an addendum", "add a signature block".
-- `rotate_pages` — `pages` (1-based) + `degrees` (90 / 180 / 270).
-- `delete_pages` — `pages` (1-based). At least one page must remain.
-- `set_metadata` — `title`, `author`, `subject`, `keywords`.
-- `replace_text` is **rejected** by the engine with `unsupported_operation`. Explain the limitation
-  and offer `append_blocks`, an annotation, or a newly generated document.
+page = reader.pages[0]
+page.rotate(90)  # Rotate 90 degrees clockwise
+writer.add_page(page)
 
-## 6. Comments and review (`comment_pdf`)
+with open("rotated.pdf", "wb") as output:
+    writer.write(output)
+```
 
-- Anchor to a phrase with `anchorText` when you want the comment pinned to specific wording.
-- Provide `pageNumber` for every comment; inspect the file first to get the right page.
-- Comments become `/Text` annotations with a visible marker, readable in Vod PDF and other readers.
-- Use comments for legal/QA feedback; use `append_blocks` when the change must be part of the body.
+### pdfplumber - Text and Table Extraction
 
-## 7. Forms (`fill_pdf_form`)
+#### Extract Text with Layout
+```python
+import pdfplumber
 
-- Only AcroForm PDFs can be filled. If the engine reports `form_not_found`, the PDF is flattened or
-  scanned — propose generating a fresh fillable-style document or adding an annotation instead.
-- Keys must match field names exactly; the tool returns `missingFields`.
-- Never invent field names. Inspect the PDF and use `forms.fields[].name`.
+with pdfplumber.open("document.pdf") as pdf:
+    for page in pdf.pages:
+        text = page.extract_text()
+        print(text)
+```
 
-## 8. Organization (`organize_pdf`)
+#### Extract Tables
+```python
+with pdfplumber.open("document.pdf") as pdf:
+    for i, page in enumerate(pdf.pages):
+        tables = page.extract_tables()
+        for j, table in enumerate(tables):
+            print(f"Table {j+1} on page {i+1}:")
+            for row in table:
+                print(row)
+```
 
-- `merge` — concatenates PDFs in the supplied `fileIds` order.
-- `extract` — pulls a page range (`"1-3,7"`) into a new PDF.
-- `split` — produces one PDF per supplied range.
-- `rotate` — rotates selected pages (or all) by a multiple of 90°.
+#### Advanced Table Extraction
+```python
+import pandas as pd
 
-## 9. Quality gates before you answer
+with pdfplumber.open("document.pdf") as pdf:
+    all_tables = []
+    for page in pdf.pages:
+        tables = page.extract_tables()
+        for table in tables:
+            if table:  # Check if table is not empty
+                df = pd.DataFrame(table[1:], columns=table[0])
+                all_tables.append(df)
 
-- Page count > 0 and matches expectations.
-- `textWordCount > 0` for authored documents (a generated doc with zero words is a bug).
-- No unexpected `warnings`/`extractionWarnings` left unexplained.
-- Filenames are `.pdf`; no `.docx` was ever produced or promised.
-- If the PDF is scanned, state that search/grounding is limited to what the text layer contains.
+# Combine all tables
+if all_tables:
+    combined_df = pd.concat(all_tables, ignore_index=True)
+    combined_df.to_excel("extracted_tables.xlsx", index=False)
+```
 
-## 10. Failure playbook
+### reportlab - Create PDFs
 
-| Symptom | Code | Response |
-|---|---|---|
-| Upload rejected | `invalid_pdf` | Ask for a real `.pdf`; DOCX belongs in Vod Word. |
-| Password-protected | `encrypted_pdf` | Ask the user to remove protection; encryption is unsupported. |
-| Corrupt structure | `corrupt_pdf` | Ask for a re-export; do not attempt partial recovery claims. |
-| No text matches | `no_text_layer` / empty matches | Say the PDF likely has no text layer; offer to inspect/report visually or add annotations. |
-| Text replacement | `unsupported_operation` | Explain fixed-layout limitation; offer alternatives in §1. |
-| Field missing | `form_not_found` / `missingFields` | Re-inspect; correct names; never guess. |
+#### Basic PDF Creation
+```python
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+c = canvas.Canvas("hello.pdf", pagesize=letter)
+width, height = letter
+
+# Add text
+c.drawString(100, height - 100, "Hello World!")
+c.drawString(100, height - 120, "This is a PDF created with reportlab")
+
+# Add a line
+c.line(100, height - 140, 400, height - 140)
+
+# Save
+c.save()
+```
+
+#### Create PDF with Multiple Pages
+```python
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet
+
+doc = SimpleDocTemplate("report.pdf", pagesize=letter)
+styles = getSampleStyleSheet()
+story = []
+
+# Add content
+title = Paragraph("Report Title", styles['Title'])
+story.append(title)
+story.append(Spacer(1, 12))
+
+body = Paragraph("This is the body of the report. " * 20, styles['Normal'])
+story.append(body)
+story.append(PageBreak())
+
+# Page 2
+story.append(Paragraph("Page 2", styles['Heading1']))
+story.append(Paragraph("Content for page 2", styles['Normal']))
+
+# Build PDF
+doc.build(story)
+```
+
+#### Subscripts and Superscripts
+
+**IMPORTANT**: Never use Unicode subscript/superscript characters (₀₁₂₃₄₅₆₇₈₉, ⁰¹²³⁴⁵⁶⁷⁸⁹) in ReportLab PDFs. The built-in fonts do not include these glyphs, causing them to render as solid black boxes.
+
+Instead, use ReportLab's XML markup tags in Paragraph objects:
+```python
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+
+styles = getSampleStyleSheet()
+
+# Subscripts: use <sub> tag
+chemical = Paragraph("H<sub>2</sub>O", styles['Normal'])
+
+# Superscripts: use <super> tag
+squared = Paragraph("x<super>2</super> + y<super>2</super>", styles['Normal'])
+```
+
+For canvas-drawn text (not Paragraph objects), manually adjust font the size and position rather than using Unicode subscripts/superscripts.
+
+## Command-Line Tools
+
+### pdftotext (poppler-utils)
+```bash
+# Extract text
+pdftotext input.pdf output.txt
+
+# Extract text preserving layout
+pdftotext -layout input.pdf output.txt
+
+# Extract specific pages
+pdftotext -f 1 -l 5 input.pdf output.txt  # Pages 1-5
+```
+
+### qpdf
+```bash
+# Merge PDFs
+qpdf --empty --pages file1.pdf file2.pdf -- merged.pdf
+
+# Split pages
+qpdf input.pdf --pages . 1-5 -- pages1-5.pdf
+qpdf input.pdf --pages . 6-10 -- pages6-10.pdf
+
+# Rotate pages
+qpdf input.pdf output.pdf --rotate=+90:1  # Rotate page 1 by 90 degrees
+
+# Remove password
+qpdf --password=mypassword --decrypt encrypted.pdf decrypted.pdf
+```
+
+### pdftk (if available)
+```bash
+# Merge
+pdftk file1.pdf file2.pdf cat output merged.pdf
+
+# Split
+pdftk input.pdf burst
+
+# Rotate
+pdftk input.pdf rotate 1east output rotated.pdf
+```
+
+## Common Tasks
+
+### Extract Text from Scanned PDFs
+```python
+# Requires: pip install pytesseract pdf2image
+import pytesseract
+from pdf2image import convert_from_path
+
+# Convert PDF to images
+images = convert_from_path('scanned.pdf')
+
+# OCR each page
+text = ""
+for i, image in enumerate(images):
+    text += f"Page {i+1}:\n"
+    text += pytesseract.image_to_string(image)
+    text += "\n\n"
+
+print(text)
+```
+
+### Add Watermark
+```python
+from pypdf import PdfReader, PdfWriter
+
+# Create watermark (or load existing)
+watermark = PdfReader("watermark.pdf").pages[0]
+
+# Apply to all pages
+reader = PdfReader("document.pdf")
+writer = PdfWriter()
+
+for page in reader.pages:
+    page.merge_page(watermark)
+    writer.add_page(page)
+
+with open("watermarked.pdf", "wb") as output:
+    writer.write(output)
+```
+
+### Extract Images
+```bash
+# Using pdfimages (poppler-utils)
+pdfimages -j input.pdf output_prefix
+
+# This extracts all images as output_prefix-000.jpg, output_prefix-001.jpg, etc.
+```
+
+### Password Protection
+```python
+from pypdf import PdfReader, PdfWriter
+
+reader = PdfReader("input.pdf")
+writer = PdfWriter()
+
+for page in reader.pages:
+    writer.add_page(page)
+
+# Add password
+writer.encrypt("userpassword", "ownerpassword")
+
+with open("encrypted.pdf", "wb") as output:
+    writer.write(output)
+```
+
+## Quick Reference
+
+| Task | Best Tool | Command/Code |
+|------|-----------|--------------|
+| Merge PDFs | pypdf | `writer.add_page(page)` |
+| Split PDFs | pypdf | One page per file |
+| Extract text | pdfplumber | `page.extract_text()` |
+| Extract tables | pdfplumber | `page.extract_tables()` |
+| Create PDFs | reportlab | Canvas or Platypus |
+| Command line merge | qpdf | `qpdf --empty --pages ...` |
+| OCR scanned PDFs | pytesseract | Convert to image first |
+| Fill PDF forms | pdf-lib or pypdf (see FORMS.md) | See FORMS.md |
+
+## Next Steps
+
+- For advanced pypdfium2 usage, see REFERENCE.md
+- For JavaScript libraries (pdf-lib), see REFERENCE.md
+- If you need to fill out a PDF form, follow the instructions in FORMS.md
+- For troubleshooting guides, see REFERENCE.md
